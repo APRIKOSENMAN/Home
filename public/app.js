@@ -24,20 +24,53 @@ function showLogin() {
 }
 
 async function register() {
-  const username = document.getElementById('reg-user').value.trim().toLowerCase();
-  const password = document.getElementById('reg-pass').value;
-  const password2 = document.getElementById('reg-pass2').value;
-  const err = document.getElementById('reg-error');
-
+  const { username, password, err } = getRegFields();
   if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen.'; return; }
-  if (password !== password2) { err.textContent = 'Passwörter stimmen nicht überein.'; return; }
+  if (password !== document.getElementById('reg-pass2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return; }
 
   const data = await api('POST', '/api/register', { username, password });
   if (data.error) { err.textContent = data.error; return; }
 
-  err.style.color = '#27ae60';
-  err.textContent = 'Registrierung erfolgreich! Bitte einloggen.';
+  err.style.color = '#1a7a3a';
+  err.textContent = 'Registrierung erfolgreich!';
   setTimeout(() => { err.textContent = ''; err.style.color = ''; showLogin(); }, 1500);
+}
+
+async function registerAndLogin() {
+  const { username, password, err } = getRegFields();
+  if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen.'; return; }
+  if (password !== document.getElementById('reg-pass2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return; }
+
+  const reg = await api('POST', '/api/register', { username, password });
+  if (reg.error) { err.textContent = reg.error; return; }
+
+  const login = await api('POST', '/api/login', { username, password });
+  if (login.error) { err.textContent = login.error; return; }
+
+  currentUser = login.username;
+  showApp(login.username);
+}
+
+async function quickRegister() {
+  const id = String(Math.floor(10000000 + Math.random() * 90000000));
+  const err = document.getElementById('reg-error');
+
+  const reg = await api('POST', '/api/register', { username: id, password: id });
+  if (reg.error) { err.textContent = reg.error; return; }
+
+  const login = await api('POST', '/api/login', { username: id, password: id });
+  if (login.error) { err.textContent = login.error; return; }
+
+  currentUser = login.username;
+  showApp(login.username);
+}
+
+function getRegFields() {
+  return {
+    username: document.getElementById('reg-user').value.trim().toLowerCase(),
+    password: document.getElementById('reg-pass').value,
+    err: document.getElementById('reg-error')
+  };
 }
 
 async function login() {
@@ -89,17 +122,16 @@ async function submitPost() {
   if (data.error) { alert(data.error); return; }
 
   document.getElementById('post-title').value = '';
-  document.getElementById('post-body').value = '';
-  lastBoardSnapshot = null; // force re-render
+  document.getElementById('post-body').value  = '';
+  lastBoardSnapshot = null;
   loadBoardPosts();
 }
 
 async function loadBoardPosts() {
   const posts = await api('GET', '/api/posts');
-  // nur neu rendern wenn sich etwas geändert hat
-  const snapshot = JSON.stringify(posts.map(p => ({ id: p._id, up: p.upvotes, down: p.downvotes, uv: p.userVote })));
-  if (snapshot === lastBoardSnapshot) return;
-  lastBoardSnapshot = snapshot;
+  const snap = JSON.stringify(posts.map(p => ({ id: p._id, up: p.upvotes, down: p.downvotes, uv: p.userVote })));
+  if (snap === lastBoardSnapshot) return;
+  lastBoardSnapshot = snap;
   renderPosts(posts, document.getElementById('posts-container'));
 }
 
@@ -117,9 +149,7 @@ async function vote(btn) {
   const postId    = btn.dataset.postId;
   const direction = btn.dataset.direction;
   const current   = btn.dataset.userVote;
-
-  // gleiches nochmal klicken = vote entfernen
-  const newVote = current === direction ? null : direction;
+  const newVote   = current === direction ? null : direction;
 
   await api('POST', `/api/posts/${postId}/vote`, { vote: newVote });
   lastBoardSnapshot = null;
@@ -132,7 +162,31 @@ async function vote(btn) {
     const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
     const posts    = await api('GET', `/api/posts?author=${encodeURIComponent(username)}`);
     renderPosts(posts, document.getElementById('profile-posts-container'));
+    const profile  = await api('GET', `/api/profile/${encodeURIComponent(username)}`);
+    updateProfileStats(profile);
   }
+}
+
+// ── Leaderboard ───────────────────────────────────
+async function loadLeaderboard() {
+  const data = await api('GET', '/api/leaderboard');
+  const tbody = document.getElementById('leaderboard-body');
+
+  if (!Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-posts">Keine User vorhanden.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map((u, i) => `
+    <tr>
+      <td class="rank">${i + 1}</td>
+      <td><a href="#profile/${encodeURIComponent(u.username)}" class="author-link">${escapeHtml(u.username)}</a></td>
+      <td class="col-num">${u.postCount}</td>
+      <td class="col-likes">${u.likesReceived}</td>
+      <td class="col-dislikes">${u.dislikesReceived}</td>
+      <td class="col-gold">${u.gold}</td>
+    </tr>
+  `).join('');
 }
 
 // ── Profil ────────────────────────────────────────
@@ -144,12 +198,10 @@ async function loadProfile(username) {
   ]);
 
   if (profile.error) {
-    document.getElementById('profile-avatar').textContent    = '?';
-    document.getElementById('profile-username').textContent  = 'User nicht gefunden';
-    document.getElementById('profile-joined').textContent    = '';
-    document.getElementById('stat-posts').textContent        = '–';
-    document.getElementById('stat-likes').textContent        = '–';
-    document.getElementById('stat-dislikes').textContent     = '–';
+    document.getElementById('profile-avatar').textContent   = '?';
+    document.getElementById('profile-username').textContent = 'User nicht gefunden';
+    document.getElementById('profile-joined').textContent   = '';
+    ['stat-posts','stat-likes','stat-dislikes','stat-gold'].forEach(id => document.getElementById(id).textContent = '–');
     document.getElementById('profile-posts-container').innerHTML = '';
     return;
   }
@@ -157,12 +209,16 @@ async function loadProfile(username) {
   document.getElementById('profile-avatar').textContent   = profile.username[0].toUpperCase();
   document.getElementById('profile-username').textContent = profile.username;
   document.getElementById('profile-joined').textContent   =
-    `Dabei seit ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
-  document.getElementById('stat-posts').textContent    = profile.postCount;
-  document.getElementById('stat-likes').textContent    = profile.likesReceived;
-  document.getElementById('stat-dislikes').textContent = profile.dislikesReceived;
-
+    `SEIT ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
+  updateProfileStats(profile);
   renderPosts(posts, document.getElementById('profile-posts-container'));
+}
+
+function updateProfileStats(profile) {
+  document.getElementById('stat-posts').textContent    = profile.postCount    ?? '–';
+  document.getElementById('stat-likes').textContent    = profile.likesReceived    ?? '–';
+  document.getElementById('stat-dislikes').textContent = profile.dislikesReceived ?? '–';
+  document.getElementById('stat-gold').textContent     = profile.gold             ?? '–';
 }
 
 // ── Posts rendern ─────────────────────────────────
@@ -187,26 +243,19 @@ function renderPosts(posts, container) {
         <div class="post-votes">
           <button class="vote-btn ${p.userVote === 'up' ? 'active-up' : ''}"
                   data-post-id="${p._id}" data-direction="up" data-user-vote="${p.userVote || ''}"
-                  onclick="vote(this)">
-            &#128077; ${p.upvotes}
-          </button>
+                  onclick="vote(this)">&#128077; ${p.upvotes}</button>
           <button class="vote-btn ${p.userVote === 'down' ? 'active-down' : ''}"
                   data-post-id="${p._id}" data-direction="down" data-user-vote="${p.userVote || ''}"
-                  onclick="vote(this)">
-            &#128078; ${p.downvotes}
-          </button>
+                  onclick="vote(this)">&#128078; ${p.downvotes}</button>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── Suche ─────────────────────────────────────────
@@ -221,16 +270,19 @@ function handleSearch(e) {
 // ── Router ────────────────────────────────────────
 function handleRoute() {
   const hash = window.location.hash || '#board';
-
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  stopBoardRefresh();
 
   if (hash === '#board' || hash === '#' || hash === '') {
     document.querySelector('[href="#board"]').classList.add('active');
     showView('board');
     loadBoardPosts();
     startBoardRefresh();
+  } else if (hash === '#leaderboard') {
+    document.querySelector('[href="#leaderboard"]').classList.add('active');
+    showView('leaderboard');
+    loadLeaderboard();
   } else if (hash.startsWith('#profile')) {
-    stopBoardRefresh();
     document.querySelector('[href="#profile"]').classList.add('active');
     showView('profile');
     const parts    = hash.split('/');
@@ -249,8 +301,5 @@ window.addEventListener('hashchange', handleRoute);
 // ── Init ─────────────────────────────────────────
 (async () => {
   const data = await api('GET', '/api/me');
-  if (data.user) {
-    currentUser = data.user;
-    showApp(data.user);
-  }
+  if (data.user) { currentUser = data.user; showApp(data.user); }
 })();

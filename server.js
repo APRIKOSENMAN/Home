@@ -12,16 +12,13 @@ const votes = new Datastore({ filename: 'votes.db', autoload: true });
 
 users.ensureIndex({ fieldName: 'username', unique: true });
 
-// Promise-Wrapper für NeDB
-const find = (db, q, sort) => new Promise((res, rej) => {
-  const c = db.find(q);
-  if (sort) c.sort(sort);
-  c.exec((e, d) => e ? rej(e) : res(d));
-});
-const findOne = (db, q) => new Promise((res, rej) => db.findOne(q, (e, d) => e ? rej(e) : res(d)));
-const insert  = (db, doc) => new Promise((res, rej) => db.insert(doc, (e, d) => e ? rej(e) : res(d)));
+const find    = (db, q, sort) => new Promise((res, rej) => { const c = db.find(q); if (sort) c.sort(sort); c.exec((e, d) => e ? rej(e) : res(d)); });
+const findOne = (db, q)       => new Promise((res, rej) => db.findOne(q, (e, d) => e ? rej(e) : res(d)));
+const insert  = (db, doc)     => new Promise((res, rej) => db.insert(doc, (e, d) => e ? rej(e) : res(d)));
 const update  = (db, q, u, o = {}) => new Promise((res, rej) => db.update(q, u, o, (e) => e ? rej(e) : res()));
-const remove  = (db, q, o = {}) => new Promise((res, rej) => db.remove(q, o, (e) => e ? rej(e) : res()));
+const remove  = (db, q, o = {})    => new Promise((res, rej) => db.remove(q, o, (e) => e ? rej(e) : res()));
+
+const calcGold = (postCount, likesReceived) => 100 + postCount * 10 + likesReceived;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -42,9 +39,9 @@ function requireAuth(req, res, next) {
 app.post('/api/register', async (req, res) => {
   const username = req.body.username?.trim().toLowerCase();
   const { password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Felder fehlen' });
-  if (username.length < 3)  return res.status(400).json({ error: 'Benutzername zu kurz (min. 3 Zeichen)' });
-  if (password.length < 6)  return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
+  if (!username || !password)   return res.status(400).json({ error: 'Felder fehlen' });
+  if (username.length < 3)      return res.status(400).json({ error: 'Benutzername zu kurz (min. 3 Zeichen)' });
+  if (password.length < 6)      return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
 
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -66,36 +63,23 @@ app.post('/api/login', async (req, res) => {
   res.json({ ok: true, username: user.username });
 });
 
-app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ ok: true });
-});
+app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ ok: true }); });
 
-app.get('/api/me', (req, res) => {
-  res.json({ user: req.session.username || null });
-});
+app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }));
 
 // ── Posts ─────────────────────────────────────────
 
 app.get('/api/posts', requireAuth, async (req, res) => {
   const query = req.query.author ? { author: req.query.author.toLowerCase() } : {};
   const docs = await find(posts, query, { createdAt: -1 });
-
   const postIds = docs.map(p => p._id);
   const allVotes = postIds.length ? await find(votes, { postId: { $in: postIds } }) : [];
 
-  const result = docs.map(post => {
+  res.json(docs.map(post => {
     const pv = allVotes.filter(v => v.postId === post._id);
-    const userVoteObj = pv.find(v => v.username === req.session.username);
-    return {
-      ...post,
-      upvotes:   pv.filter(v => v.vote === 'up').length,
-      downvotes: pv.filter(v => v.vote === 'down').length,
-      userVote:  userVoteObj?.vote || null
-    };
-  });
-
-  res.json(result);
+    const uv = pv.find(v => v.username === req.session.username);
+    return { ...post, upvotes: pv.filter(v => v.vote === 'up').length, downvotes: pv.filter(v => v.vote === 'down').length, userVote: uv?.vote || null };
+  }));
 });
 
 app.post('/api/posts', requireAuth, async (req, res) => {
@@ -106,19 +90,14 @@ app.post('/api/posts', requireAuth, async (req, res) => {
 });
 
 app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
-  const postId  = req.params.id;
+  const postId = req.params.id;
   const { vote: voteValue } = req.body;
   const username = req.session.username;
-
   const existing = await findOne(votes, { postId, username });
 
-  if (!voteValue) {
-    await remove(votes, { postId, username });
-  } else if (existing) {
-    await update(votes, { postId, username }, { $set: { vote: voteValue } });
-  } else {
-    await insert(votes, { postId, username, vote: voteValue });
-  }
+  if (!voteValue)      await remove(votes, { postId, username });
+  else if (existing)   await update(votes, { postId, username }, { $set: { vote: voteValue } });
+  else                 await insert(votes, { postId, username, vote: voteValue });
 
   res.json({ ok: true });
 });
@@ -133,14 +112,35 @@ app.get('/api/profile/:username', requireAuth, async (req, res) => {
   const userPosts = await find(posts, { author: username });
   const postIds   = userPosts.map(p => p._id);
   const allVotes  = postIds.length ? await find(votes, { postId: { $in: postIds } }) : [];
+  const likesReceived    = allVotes.filter(v => v.vote === 'up').length;
+  const dislikesReceived = allVotes.filter(v => v.vote === 'down').length;
 
   res.json({
-    username:         user.username,
-    postCount:        userPosts.length,
-    likesReceived:    allVotes.filter(v => v.vote === 'up').length,
-    dislikesReceived: allVotes.filter(v => v.vote === 'down').length,
-    createdAt:        user.createdAt
+    username, postCount: userPosts.length,
+    likesReceived, dislikesReceived,
+    gold: calcGold(userPosts.length, likesReceived),
+    createdAt: user.createdAt
   });
+});
+
+// ── Leaderboard ───────────────────────────────────
+
+app.get('/api/leaderboard', requireAuth, async (req, res) => {
+  const allUsers = await find(users, {});
+  const allPosts = await find(posts, {});
+  const allVotes = await find(votes, {});
+
+  const board = allUsers.map(user => {
+    const userPosts       = allPosts.filter(p => p.author === user.username);
+    const postIds         = userPosts.map(p => p._id);
+    const uv              = allVotes.filter(v => postIds.includes(v.postId));
+    const likesReceived   = uv.filter(v => v.vote === 'up').length;
+    const dislikesReceived= uv.filter(v => v.vote === 'down').length;
+    return { username: user.username, postCount: userPosts.length, likesReceived, dislikesReceived, gold: calcGold(userPosts.length, likesReceived) };
+  });
+
+  board.sort((a, b) => b.likesReceived - a.likesReceived);
+  res.json(board);
 });
 
 // ── Start ─────────────────────────────────────────

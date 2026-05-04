@@ -11,21 +11,32 @@
   <!-- AUTH -->
   <div id="auth-section">
     <div class="card" id="login-box">
-      <h2>Anmelden</h2>
-      <input type="text" id="login-user" placeholder="Benutzername" />
-      <input type="password" id="login-pass" placeholder="Passwort" />
-      <button onclick="login()">Einloggen</button>
-      <p class="error" id="login-error"></p>
-      <p class="switch">Noch kein Konto? <a href="#" onclick="showRegister()">Registrieren</a></p>
+      <div class="card-header">ANMELDEN</div>
+      <div class="card-body">
+        <input type="text" id="login-user" placeholder="Benutzername" />
+        <input type="password" id="login-pass" placeholder="Passwort" />
+        <button onclick="login()">EINLOGGEN</button>
+        <p class="error" id="login-error"></p>
+        <p class="switch">Noch kein Konto? <a href="#" onclick="showRegister()">Registrieren</a></p>
+      </div>
     </div>
+
     <div class="card hidden" id="register-box">
-      <h2>Registrieren</h2>
-      <input type="text" id="reg-user" placeholder="Benutzername" />
-      <input type="password" id="reg-pass" placeholder="Passwort (min. 6 Zeichen)" />
-      <input type="password" id="reg-pass2" placeholder="Passwort wiederholen" />
-      <button onclick="register()">Registrieren</button>
-      <p class="error" id="reg-error"></p>
-      <p class="switch">Schon registriert? <a href="#" onclick="showLogin()">Anmelden</a></p>
+      <div class="card-header">REGISTRIEREN</div>
+      <div class="card-body">
+        <input type="text" id="reg-user" placeholder="Benutzername" />
+        <input type="password" id="reg-pass" placeholder="Passwort (min. 6 Zeichen)" />
+        <input type="password" id="reg-pass2" placeholder="Passwort wiederholen" />
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="register()">REGISTRIEREN</button>
+          <button onclick="registerAndLogin()">REGISTRIEREN &amp; EINLOGGEN</button>
+        </div>
+        <div class="divider"></div>
+        <button class="btn-quick" onclick="quickRegister()">&#9889; QUICK REGISTER</button>
+        <p class="quick-hint">Zufälliger 8-stelliger Account — Name = Passwort</p>
+        <p class="error" id="reg-error"></p>
+        <p class="switch">Schon registriert? <a href="#" onclick="showLogin()">Anmelden</a></p>
+      </div>
     </div>
   </div>
 
@@ -34,57 +45,83 @@
     <header>
       <div class="search-box">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="11" cy="11" r="7"/>
-          <line x1="16.5" y1="16.5" x2="22" y2="22"/>
+          <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
         </svg>
         <input type="text" id="search-input" placeholder="username"
                onkeydown="handleSearch(event)" autocomplete="off" />
       </div>
       <nav>
-        <a href="#board" class="nav-link">Board</a>
-        <a href="#profile" class="nav-link">Profil</a>
+        <a href="#board"       class="nav-link">BOARD</a>
+        <a href="#leaderboard" class="nav-link">LEADERBOARD</a>
+        <a href="#profile"     class="nav-link">PROFIL</a>
       </nav>
-      <button class="logout-btn" onclick="logout()">Abmelden</button>
+      <button class="logout-btn" onclick="logout()">ABMELDEN</button>
     </header>
 
     <main>
 
       <!-- Board -->
       <div id="view-board" class="view hidden">
-        <div class="write-box">
-          <h3>Neuen Beitrag schreiben</h3>
-          <input type="text" id="post-title" placeholder="Titel" />
-          <textarea id="post-body" placeholder="Inhalt..."></textarea>
-          <button onclick="submitPost()">Veröffentlichen</button>
+        <div class="panel">
+          <div class="panel-header">NEUEN BEITRAG VERFASSEN</div>
+          <div class="panel-body write-form">
+            <input type="text" id="post-title" placeholder="Titel" />
+            <textarea id="post-body" placeholder="Inhalt..."></textarea>
+            <button onclick="submitPost()">VERÖFFENTLICHEN</button>
+          </div>
         </div>
-        <h3 class="section-title">Alle Beiträge</h3>
+        <div class="panel-label">ALLE BEITRÄGE</div>
         <div id="posts-container"></div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div id="view-leaderboard" class="view hidden">
+        <div class="panel-label">LEADERBOARD — SORTIERT NACH LIKES</div>
+        <div class="panel">
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>USERNAME</th>
+                <th>BEITRÄGE</th>
+                <th>&#128077;</th>
+                <th>&#128078;</th>
+                <th>&#128176; GOLD</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Profil -->
       <div id="view-profile" class="view hidden">
-        <div class="profile-header">
-          <div class="profile-avatar" id="profile-avatar"></div>
-          <div class="profile-info">
-            <h2 id="profile-username"></h2>
-            <p id="profile-joined"></p>
-            <div class="profile-stats">
-              <div class="stat">
-                <span class="stat-value" id="stat-posts">0</span>
-                <span class="stat-label">Beiträge</span>
-              </div>
-              <div class="stat">
-                <span class="stat-value" id="stat-likes">0</span>
-                <span class="stat-label">&#128077; erhalten</span>
-              </div>
-              <div class="stat">
-                <span class="stat-value" id="stat-dislikes">0</span>
-                <span class="stat-label">&#128078; erhalten</span>
-              </div>
+        <div class="panel profile-panel">
+          <div class="profile-left">
+            <div class="profile-avatar" id="profile-avatar"></div>
+            <div class="profile-username" id="profile-username"></div>
+            <div class="profile-joined" id="profile-joined"></div>
+          </div>
+          <div class="profile-stats">
+            <div class="stat-cell">
+              <div class="stat-val" id="stat-posts">–</div>
+              <div class="stat-key">BEITRÄGE</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-val likes" id="stat-likes">–</div>
+              <div class="stat-key">&#128077; LIKES</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-val dislikes" id="stat-dislikes">–</div>
+              <div class="stat-key">&#128078; DISLIKES</div>
+            </div>
+            <div class="stat-cell gold-cell">
+              <div class="stat-val gold" id="stat-gold">–</div>
+              <div class="stat-key">&#128176; GOLD</div>
             </div>
           </div>
         </div>
-        <h3 class="section-title">Beiträge</h3>
+        <div class="panel-label">BEITRÄGE</div>
         <div id="profile-posts-container"></div>
       </div>
 
