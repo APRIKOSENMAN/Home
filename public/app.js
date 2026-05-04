@@ -1,6 +1,8 @@
 let currentUser = null;
+let refreshInterval = null;
+let lastBoardSnapshot = null;
 
-// ── API-Helfer ───────────────────────────────────
+// ── API ──────────────────────────────────────────
 async function api(method, url, body) {
   const res = await fetch(url, {
     method,
@@ -22,7 +24,7 @@ function showLogin() {
 }
 
 async function register() {
-  const username = document.getElementById('reg-user').value.trim();
+  const username = document.getElementById('reg-user').value.trim().toLowerCase();
   const password = document.getElementById('reg-pass').value;
   const password2 = document.getElementById('reg-pass2').value;
   const err = document.getElementById('reg-error');
@@ -39,7 +41,7 @@ async function register() {
 }
 
 async function login() {
-  const username = document.getElementById('login-user').value.trim();
+  const username = document.getElementById('login-user').value.trim().toLowerCase();
   const password = document.getElementById('login-pass').value;
   const err = document.getElementById('login-error');
 
@@ -56,6 +58,7 @@ async function login() {
 async function logout() {
   await api('POST', '/api/logout');
   currentUser = null;
+  stopBoardRefresh();
   document.getElementById('app-section').classList.add('hidden');
   document.getElementById('auth-section').classList.remove('hidden');
   document.getElementById('login-user').value = '';
@@ -76,10 +79,10 @@ function showApp(username) {
   }
 }
 
-// ── Board ────────────────────────────────────────
+// ── Board ─────────────────────────────────────────
 async function submitPost() {
   const title = document.getElementById('post-title').value.trim();
-  const body = document.getElementById('post-body').value.trim();
+  const body  = document.getElementById('post-body').value.trim();
   if (!title || !body) return;
 
   const data = await api('POST', '/api/posts', { title, body });
@@ -87,38 +90,82 @@ async function submitPost() {
 
   document.getElementById('post-title').value = '';
   document.getElementById('post-body').value = '';
+  lastBoardSnapshot = null; // force re-render
   loadBoardPosts();
 }
 
 async function loadBoardPosts() {
   const posts = await api('GET', '/api/posts');
+  // nur neu rendern wenn sich etwas geändert hat
+  const snapshot = JSON.stringify(posts.map(p => ({ id: p._id, up: p.upvotes, down: p.downvotes, uv: p.userVote })));
+  if (snapshot === lastBoardSnapshot) return;
+  lastBoardSnapshot = snapshot;
   renderPosts(posts, document.getElementById('posts-container'));
 }
 
-// ── Profil ───────────────────────────────────────
+function startBoardRefresh() {
+  stopBoardRefresh();
+  refreshInterval = setInterval(loadBoardPosts, 5000);
+}
+
+function stopBoardRefresh() {
+  if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+}
+
+// ── Votes ─────────────────────────────────────────
+async function vote(btn) {
+  const postId    = btn.dataset.postId;
+  const direction = btn.dataset.direction;
+  const current   = btn.dataset.userVote;
+
+  // gleiches nochmal klicken = vote entfernen
+  const newVote = current === direction ? null : direction;
+
+  await api('POST', `/api/posts/${postId}/vote`, { vote: newVote });
+  lastBoardSnapshot = null;
+
+  const hash = window.location.hash || '#board';
+  if (hash === '#board' || hash === '#' || hash === '') {
+    loadBoardPosts();
+  } else if (hash.startsWith('#profile')) {
+    const parts    = hash.split('/');
+    const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
+    const posts    = await api('GET', `/api/posts?author=${encodeURIComponent(username)}`);
+    renderPosts(posts, document.getElementById('profile-posts-container'));
+  }
+}
+
+// ── Profil ────────────────────────────────────────
 async function loadProfile(username) {
+  const uname = username.toLowerCase();
   const [profile, posts] = await Promise.all([
-    api('GET', `/api/profile/${encodeURIComponent(username)}`),
-    api('GET', `/api/posts?author=${encodeURIComponent(username)}`)
+    api('GET', `/api/profile/${encodeURIComponent(uname)}`),
+    api('GET', `/api/posts?author=${encodeURIComponent(uname)}`)
   ]);
 
   if (profile.error) {
-    document.getElementById('profile-avatar').textContent = '?';
-    document.getElementById('profile-username').textContent = 'User nicht gefunden';
-    document.getElementById('profile-meta').textContent = '';
+    document.getElementById('profile-avatar').textContent    = '?';
+    document.getElementById('profile-username').textContent  = 'User nicht gefunden';
+    document.getElementById('profile-joined').textContent    = '';
+    document.getElementById('stat-posts').textContent        = '–';
+    document.getElementById('stat-likes').textContent        = '–';
+    document.getElementById('stat-dislikes').textContent     = '–';
     document.getElementById('profile-posts-container').innerHTML = '';
     return;
   }
 
-  document.getElementById('profile-avatar').textContent = username[0].toUpperCase();
+  document.getElementById('profile-avatar').textContent   = profile.username[0].toUpperCase();
   document.getElementById('profile-username').textContent = profile.username;
-  document.getElementById('profile-meta').textContent =
-    `${profile.postCount} Beiträge · Dabei seit ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
+  document.getElementById('profile-joined').textContent   =
+    `Dabei seit ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
+  document.getElementById('stat-posts').textContent    = profile.postCount;
+  document.getElementById('stat-likes').textContent    = profile.likesReceived;
+  document.getElementById('stat-dislikes').textContent = profile.dislikesReceived;
 
   renderPosts(posts, document.getElementById('profile-posts-container'));
 }
 
-// ── Posts rendern ────────────────────────────────
+// ── Posts rendern ─────────────────────────────────
 function renderPosts(posts, container) {
   if (!Array.isArray(posts) || posts.length === 0) {
     container.innerHTML = '<p class="no-posts">Noch keine Beiträge vorhanden.</p>';
@@ -137,6 +184,18 @@ function renderPosts(posts, container) {
           </span>
         </div>
         <p class="post-body">${escapeHtml(p.body)}</p>
+        <div class="post-votes">
+          <button class="vote-btn ${p.userVote === 'up' ? 'active-up' : ''}"
+                  data-post-id="${p._id}" data-direction="up" data-user-vote="${p.userVote || ''}"
+                  onclick="vote(this)">
+            &#128077; ${p.upvotes}
+          </button>
+          <button class="vote-btn ${p.userVote === 'down' ? 'active-down' : ''}"
+                  data-post-id="${p._id}" data-direction="down" data-user-vote="${p.userVote || ''}"
+                  onclick="vote(this)">
+            &#128078; ${p.downvotes}
+          </button>
+        </div>
       </div>
     `;
   }).join('');
@@ -150,7 +209,16 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ── Router ───────────────────────────────────────
+// ── Suche ─────────────────────────────────────────
+function handleSearch(e) {
+  if (e.key !== 'Enter') return;
+  const val = document.getElementById('search-input').value.trim().toLowerCase();
+  if (!val) return;
+  document.getElementById('search-input').value = '';
+  window.location.hash = `#profile/${encodeURIComponent(val)}`;
+}
+
+// ── Router ────────────────────────────────────────
 function handleRoute() {
   const hash = window.location.hash || '#board';
 
@@ -160,10 +228,12 @@ function handleRoute() {
     document.querySelector('[href="#board"]').classList.add('active');
     showView('board');
     loadBoardPosts();
+    startBoardRefresh();
   } else if (hash.startsWith('#profile')) {
+    stopBoardRefresh();
     document.querySelector('[href="#profile"]').classList.add('active');
     showView('profile');
-    const parts = hash.split('/');
+    const parts    = hash.split('/');
     const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
     loadProfile(username);
   }
