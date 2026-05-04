@@ -1,24 +1,39 @@
-const express = require('express');
-const session = require('express-session');
-const bcrypt = require('bcryptjs');
-const Datastore = require('@seald-io/nedb');
-const path = require('path');
+const express        = require('express');
+const session        = require('express-session');
+const bcrypt         = require('bcryptjs');
+const { Pool }       = require('pg');
+const { randomUUID } = require('crypto');
+const path           = require('path');
 
-const app = express();
+const app  = express();
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-const users = new Datastore({ filename: 'users.db', autoload: true });
-const posts = new Datastore({ filename: 'posts.db', autoload: true });
-const votes = new Datastore({ filename: 'votes.db', autoload: true });
-
-users.ensureIndex({ fieldName: 'username', unique: true });
-
-const find    = (db, q, sort) => new Promise((res, rej) => { const c = db.find(q); if (sort) c.sort(sort); c.exec((e, d) => e ? rej(e) : res(d)); });
-const findOne = (db, q)       => new Promise((res, rej) => db.findOne(q, (e, d) => e ? rej(e) : res(d)));
-const insert  = (db, doc)     => new Promise((res, rej) => db.insert(doc, (e, d) => e ? rej(e) : res(d)));
-const update  = (db, q, u, o = {}) => new Promise((res, rej) => db.update(q, u, o, (e) => e ? rej(e) : res()));
-const remove  = (db, q, o = {})    => new Promise((res, rej) => db.remove(q, o, (e) => e ? rej(e) : res()));
-
-const calcGold = (postCount, likesReceived) => 100 + postCount * 10 + likesReceived;
+// Tabellen beim Start anlegen
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      username   TEXT PRIMARY KEY,
+      password   TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS posts (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      body       TEXT NOT NULL,
+      author     TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS votes (
+      post_id  TEXT NOT NULL,
+      username TEXT NOT NULL,
+      vote     TEXT NOT NULL,
+      PRIMARY KEY (post_id, username)
+    );
+  `);
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -34,28 +49,32 @@ function requireAuth(req, res, next) {
   next();
 }
 
+const calcGold = (posts, likes) => 100 + posts * 10 + likes;
+
 // ── Auth ──────────────────────────────────────────
 
 app.post('/api/register', async (req, res) => {
   const username = req.body.username?.trim().toLowerCase();
   const { password } = req.body;
-  if (!username || !password)   return res.status(400).json({ error: 'Felder fehlen' });
-  if (username.length < 3)      return res.status(400).json({ error: 'Benutzername zu kurz (min. 3 Zeichen)' });
-  if (password.length < 6)      return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
+  if (!username || !password)  return res.status(400).json({ error: 'Felder fehlen' });
+  if (username.length < 3)     return res.status(400).json({ error: 'Benutzername zu kurz (min. 3 Zeichen)' });
+  if (password.length < 6)     return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    await insert(users, { username, password: hash, createdAt: new Date() });
+    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, hash]);
     res.json({ ok: true });
-  } catch {
-    res.status(409).json({ error: 'Benutzername bereits vergeben' });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Benutzername bereits vergeben' });
+    throw e;
   }
 });
 
 app.post('/api/login', async (req, res) => {
   const username = req.body.username?.trim().toLowerCase();
   const { password } = req.body;
-  const user = await findOne(users, { username });
+  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  const user = rows[0];
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ error: 'Falscher Benutzername oder Passwort' });
   }
@@ -70,35 +89,49 @@ app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }
 // ── Posts ─────────────────────────────────────────
 
 app.get('/api/posts', requireAuth, async (req, res) => {
-  const query = req.query.author ? { author: req.query.author.toLowerCase() } : {};
-  const docs = await find(posts, query, { createdAt: -1 });
-  const postIds = docs.map(p => p._id);
-  const allVotes = postIds.length ? await find(votes, { postId: { $in: postIds } }) : [];
+  const author = req.query.author?.toLowerCase();
+  const me     = req.session.username;
 
-  res.json(docs.map(post => {
-    const pv = allVotes.filter(v => v.postId === post._id);
-    const uv = pv.find(v => v.username === req.session.username);
-    return { ...post, upvotes: pv.filter(v => v.vote === 'up').length, downvotes: pv.filter(v => v.vote === 'down').length, userVote: uv?.vote || null };
-  }));
+  const sql = `
+    SELECT p.*,
+      COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS upvotes,
+      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS downvotes,
+      MAX(CASE WHEN v.username = $1 THEN v.vote END)    AS "userVote"
+    FROM posts p
+    LEFT JOIN votes v ON v.post_id = p.id
+    ${author ? 'WHERE p.author = $2' : ''}
+    GROUP BY p.id
+    ORDER BY p.created_at DESC
+  `;
+
+  const params = author ? [me, author] : [me];
+  const { rows } = await pool.query(sql, params);
+  res.json(rows.map(r => ({ ...r, userVote: r.userVote || null })));
 });
 
 app.post('/api/posts', requireAuth, async (req, res) => {
   const { title, body } = req.body;
   if (!title || !body) return res.status(400).json({ error: 'Titel und Inhalt erforderlich' });
-  const post = await insert(posts, { title, body, author: req.session.username, createdAt: new Date() });
-  res.json({ ...post, upvotes: 0, downvotes: 0, userVote: null });
+  const { rows } = await pool.query(
+    'INSERT INTO posts (id, title, body, author) VALUES ($1, $2, $3, $4) RETURNING *',
+    [randomUUID(), title, body, req.session.username]
+  );
+  res.json({ ...rows[0], upvotes: 0, downvotes: 0, userVote: null });
 });
 
 app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
-  const postId = req.params.id;
-  const { vote: voteValue } = req.body;
+  const { id } = req.params;
+  const { vote } = req.body;
   const username = req.session.username;
-  const existing = await findOne(votes, { postId, username });
 
-  if (!voteValue)      await remove(votes, { postId, username });
-  else if (existing)   await update(votes, { postId, username }, { $set: { vote: voteValue } });
-  else                 await insert(votes, { postId, username, vote: voteValue });
-
+  if (!vote) {
+    await pool.query('DELETE FROM votes WHERE post_id = $1 AND username = $2', [id, username]);
+  } else {
+    await pool.query(
+      'INSERT INTO votes (post_id, username, vote) VALUES ($1, $2, $3) ON CONFLICT (post_id, username) DO UPDATE SET vote = $3',
+      [id, username, vote]
+    );
+  }
   res.json({ ok: true });
 });
 
@@ -106,43 +139,49 @@ app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
 
 app.get('/api/profile/:username', requireAuth, async (req, res) => {
   const username = req.params.username.toLowerCase();
-  const user = await findOne(users, { username });
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  const { rows: u } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  if (!u[0]) return res.status(404).json({ error: 'User nicht gefunden' });
 
-  const userPosts = await find(posts, { author: username });
-  const postIds   = userPosts.map(p => p._id);
-  const allVotes  = postIds.length ? await find(votes, { postId: { $in: postIds } }) : [];
-  const likesReceived    = allVotes.filter(v => v.vote === 'up').length;
-  const dislikesReceived = allVotes.filter(v => v.vote === 'down').length;
+  const { rows: s } = await pool.query(`
+    SELECT
+      COUNT(DISTINCT p.id)::int                         AS "postCount",
+      COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS "likesReceived",
+      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived"
+    FROM posts p
+    LEFT JOIN votes v ON v.post_id = p.id
+    WHERE p.author = $1
+  `, [username]);
 
+  const { postCount, likesReceived, dislikesReceived } = s[0];
   res.json({
-    username, postCount: userPosts.length,
-    likesReceived, dislikesReceived,
-    gold: calcGold(userPosts.length, likesReceived),
-    createdAt: user.createdAt
+    username, postCount, likesReceived, dislikesReceived,
+    gold: calcGold(postCount, likesReceived),
+    createdAt: u[0].created_at
   });
 });
 
 // ── Leaderboard ───────────────────────────────────
 
 app.get('/api/leaderboard', requireAuth, async (req, res) => {
-  const allUsers = await find(users, {});
-  const allPosts = await find(posts, {});
-  const allVotes = await find(votes, {});
-
-  const board = allUsers.map(user => {
-    const userPosts       = allPosts.filter(p => p.author === user.username);
-    const postIds         = userPosts.map(p => p._id);
-    const uv              = allVotes.filter(v => postIds.includes(v.postId));
-    const likesReceived   = uv.filter(v => v.vote === 'up').length;
-    const dislikesReceived= uv.filter(v => v.vote === 'down').length;
-    return { username: user.username, postCount: userPosts.length, likesReceived, dislikesReceived, gold: calcGold(userPosts.length, likesReceived) };
-  });
-
-  board.sort((a, b) => b.likesReceived - a.likesReceived);
-  res.json(board);
+  const { rows } = await pool.query(`
+    SELECT
+      u.username,
+      COUNT(DISTINCT p.id)::int                         AS "postCount",
+      COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS "likesReceived",
+      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived",
+      (100 + COUNT(DISTINCT p.id)::int * 10
+           + COUNT(CASE WHEN v.vote = 'up' THEN 1 END)::int) AS gold
+    FROM users u
+    LEFT JOIN posts  p ON p.author   = u.username
+    LEFT JOIN votes  v ON v.post_id  = p.id
+    GROUP BY u.username
+    ORDER BY "likesReceived" DESC
+  `);
+  res.json(rows);
 });
 
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`));
+initDb()
+  .then(() => app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`)))
+  .catch(e => { console.error('DB-Fehler:', e.message); process.exit(1); });
