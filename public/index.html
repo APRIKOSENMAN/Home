@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meine Website</title>
+  <title>Home</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -33,22 +33,41 @@
   <!-- APP SECTION -->
   <div id="app-section" class="hidden">
     <header>
-      <span>Hallo, <strong id="current-user-name"></strong></span>
+      <span class="logo">Home</span>
+      <nav>
+        <a href="#board" class="nav-link">Board</a>
+        <a href="#profile" class="nav-link">Profil</a>
+      </nav>
       <button class="logout-btn" onclick="logout()">Abmelden</button>
     </header>
 
     <main>
-      <div class="write-box">
-        <h3>Neuen Beitrag schreiben</h3>
-        <input type="text" id="post-title" placeholder="Titel" />
-        <textarea id="post-body" placeholder="Inhalt..."></textarea>
-        <button onclick="submitPost()">Veröffentlichen</button>
-      </div>
 
-      <div id="posts-list">
-        <h3>Alle Beiträge</h3>
+      <!-- Board -->
+      <div id="view-board" class="view hidden">
+        <div class="write-box">
+          <h3>Neuen Beitrag schreiben</h3>
+          <input type="text" id="post-title" placeholder="Titel" />
+          <textarea id="post-body" placeholder="Inhalt..."></textarea>
+          <button onclick="submitPost()">Veröffentlichen</button>
+        </div>
+        <h3 class="section-title">Alle Beiträge</h3>
         <div id="posts-container"></div>
       </div>
+
+      <!-- Profil -->
+      <div id="view-profile" class="view hidden">
+        <div class="profile-header">
+          <div class="profile-avatar" id="profile-avatar"></div>
+          <div class="profile-info">
+            <h2 id="profile-username"></h2>
+            <p id="profile-meta"></p>
+          </div>
+        </div>
+        <h3 class="section-title">Beiträge</h3>
+        <div id="profile-posts-container"></div>
+      </div>
+
     </main>
   </div>
 

@@ -1,3 +1,5 @@
+let currentUser = null;
+
 // ── API-Helfer ───────────────────────────────────
 async function api(method, url, body) {
   const res = await fetch(url, {
@@ -47,26 +49,34 @@ async function login() {
   if (data.error) { err.textContent = data.error; return; }
 
   err.textContent = '';
+  currentUser = data.username;
   showApp(data.username);
 }
 
 async function logout() {
   await api('POST', '/api/logout');
+  currentUser = null;
   document.getElementById('app-section').classList.add('hidden');
   document.getElementById('auth-section').classList.remove('hidden');
   document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
+  history.replaceState(null, '', window.location.pathname);
   showLogin();
 }
 
 // ── App ──────────────────────────────────────────
 function showApp(username) {
+  currentUser = username;
   document.getElementById('auth-section').classList.add('hidden');
   document.getElementById('app-section').classList.remove('hidden');
-  document.getElementById('current-user-name').textContent = username;
-  loadPosts();
+  if (!window.location.hash || window.location.hash === '#') {
+    window.location.hash = '#board';
+  } else {
+    handleRoute();
+  }
 }
 
+// ── Board ────────────────────────────────────────
 async function submitPost() {
   const title = document.getElementById('post-title').value.trim();
   const body = document.getElementById('post-body').value.trim();
@@ -77,27 +87,59 @@ async function submitPost() {
 
   document.getElementById('post-title').value = '';
   document.getElementById('post-body').value = '';
-  loadPosts();
+  loadBoardPosts();
 }
 
-async function loadPosts() {
+async function loadBoardPosts() {
   const posts = await api('GET', '/api/posts');
-  const container = document.getElementById('posts-container');
+  renderPosts(posts, document.getElementById('posts-container'));
+}
 
+// ── Profil ───────────────────────────────────────
+async function loadProfile(username) {
+  const [profile, posts] = await Promise.all([
+    api('GET', `/api/profile/${encodeURIComponent(username)}`),
+    api('GET', `/api/posts?author=${encodeURIComponent(username)}`)
+  ]);
+
+  if (profile.error) {
+    document.getElementById('profile-avatar').textContent = '?';
+    document.getElementById('profile-username').textContent = 'User nicht gefunden';
+    document.getElementById('profile-meta').textContent = '';
+    document.getElementById('profile-posts-container').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('profile-avatar').textContent = username[0].toUpperCase();
+  document.getElementById('profile-username').textContent = profile.username;
+  document.getElementById('profile-meta').textContent =
+    `${profile.postCount} Beiträge · Dabei seit ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
+
+  renderPosts(posts, document.getElementById('profile-posts-container'));
+}
+
+// ── Posts rendern ────────────────────────────────
+function renderPosts(posts, container) {
   if (!Array.isArray(posts) || posts.length === 0) {
     container.innerHTML = '<p class="no-posts">Noch keine Beiträge vorhanden.</p>';
     return;
   }
 
-  container.innerHTML = posts.map(p => `
-    <div class="post">
-      <div class="post-header">
-        <h4>${escapeHtml(p.title)}</h4>
-        <span class="post-meta">${escapeHtml(p.author)} &middot; ${new Date(p.created_at).toLocaleString('de-DE')}</span>
+  container.innerHTML = posts.map(p => {
+    const date = new Date(p.createdAt).toLocaleString('de-DE');
+    return `
+      <div class="post">
+        <div class="post-header">
+          <h4>${escapeHtml(p.title)}</h4>
+          <span class="post-meta">
+            <a href="#profile/${encodeURIComponent(p.author)}" class="author-link">${escapeHtml(p.author)}</a>
+            &middot; ${date}
+          </span>
+        </div>
+        <p class="post-body">${escapeHtml(p.body)}</p>
       </div>
-      <p class="post-body">${escapeHtml(p.body)}</p>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function escapeHtml(str) {
@@ -108,8 +150,37 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ── Init: Session prüfen ─────────────────────────
+// ── Router ───────────────────────────────────────
+function handleRoute() {
+  const hash = window.location.hash || '#board';
+
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+  if (hash === '#board' || hash === '#' || hash === '') {
+    document.querySelector('[href="#board"]').classList.add('active');
+    showView('board');
+    loadBoardPosts();
+  } else if (hash.startsWith('#profile')) {
+    document.querySelector('[href="#profile"]').classList.add('active');
+    showView('profile');
+    const parts = hash.split('/');
+    const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
+    loadProfile(username);
+  }
+}
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  document.getElementById(`view-${name}`).classList.remove('hidden');
+}
+
+window.addEventListener('hashchange', handleRoute);
+
+// ── Init ─────────────────────────────────────────
 (async () => {
   const data = await api('GET', '/api/me');
-  if (data.user) showApp(data.user);
+  if (data.user) {
+    currentUser = data.user;
+    showApp(data.user);
+  }
 })();

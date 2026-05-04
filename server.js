@@ -64,8 +64,19 @@ app.get('/api/me', (req, res) => {
 // ── Post-Routen ──────────────────────────────────
 
 app.get('/api/posts', requireAuth, (req, res) => {
-  posts.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
+  const query = req.query.author ? { author: req.query.author } : {};
+  posts.find(query).sort({ createdAt: -1 }).exec((err, docs) => {
     res.json(docs);
+  });
+});
+
+app.get('/api/profile/:username', requireAuth, (req, res) => {
+  const { username } = req.params;
+  users.findOne({ username }, (err, user) => {
+    if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+    posts.count({ author: username }, (err2, count) => {
+      res.json({ username: user.username, postCount: count, createdAt: user.createdAt });
+    });
   });
 });
 
