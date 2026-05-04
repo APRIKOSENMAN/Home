@@ -13,7 +13,11 @@
     <div class="card" id="login-box">
       <div class="card-header">ANMELDEN</div>
       <div class="card-body">
-        <input type="text" id="login-user" placeholder="Benutzername" />
+        <div class="field-wrap">
+          <input type="text" id="login-user" placeholder="Benutzername" maxlength="20" oninput="updateCharCount(this)" />
+          <span class="char-count">0/20</span>
+          <div class="char-bar"><div class="char-fill"></div></div>
+        </div>
         <input type="password" id="login-pass" placeholder="Passwort" />
         <button onclick="login()">EINLOGGEN</button>
         <p class="error" id="login-error"></p>
@@ -24,7 +28,11 @@
     <div class="card hidden" id="register-box">
       <div class="card-header">REGISTRIEREN</div>
       <div class="card-body">
-        <input type="text" id="reg-user" placeholder="Benutzername" />
+        <div class="field-wrap">
+          <input type="text" id="reg-user" placeholder="Benutzername" maxlength="20" oninput="updateCharCount(this)" />
+          <span class="char-count">0/20</span>
+          <div class="char-bar"><div class="char-fill"></div></div>
+        </div>
         <input type="password" id="reg-pass" placeholder="Passwort (min. 6 Zeichen)" />
         <input type="password" id="reg-pass2" placeholder="Passwort wiederholen" />
         <div class="btn-row">
@@ -65,34 +73,98 @@
         <div class="panel">
           <div class="panel-header">NEUEN BEITRAG VERFASSEN</div>
           <div class="panel-body write-form">
-            <input type="text" id="post-title" placeholder="Titel" />
-            <textarea id="post-body" placeholder="Inhalt..."></textarea>
-            <button onclick="submitPost()">VERÖFFENTLICHEN</button>
+            <div class="field-wrap">
+              <input type="text" id="post-title" placeholder="Titel" maxlength="100"
+                     oninput="updateCharCount(this); checkPublishable()" />
+              <span class="char-count">0/100</span>
+              <div class="char-bar"><div class="char-fill"></div></div>
+            </div>
+            <div class="field-wrap">
+              <textarea id="post-body" placeholder="Inhalt..." maxlength="1000"
+                        oninput="updateCharCount(this); checkPublishable()"></textarea>
+              <span class="char-count char-count-area">0/1000</span>
+              <div class="char-bar"><div class="char-fill"></div></div>
+            </div>
+            <div class="post-feedback hidden" id="post-feedback"></div>
+            <button id="publish-btn" onclick="submitPost()" disabled class="btn-disabled">VERÖFFENTLICHEN</button>
           </div>
         </div>
-        <div class="panel-label">ALLE BEITRÄGE</div>
+
+        <div class="board-toolbar">
+          <span class="panel-label" style="margin:0">ALLE BEITRÄGE</span>
+          <div class="view-toggle">
+            <button class="toggle-btn active" id="btn-cards" onclick="setBoardView('cards')">&#9646;&#9646; KARTEN</button>
+            <button class="toggle-btn" id="btn-table" onclick="setBoardView('table')">&#9776; TABELLE</button>
+          </div>
+        </div>
         <div id="posts-container"></div>
+        <div id="posts-table-container" class="hidden panel">
+          <table class="posts-table">
+            <thead>
+              <tr>
+                <th>TITEL</th>
+                <th>AUTOR</th>
+                <th>DATUM</th>
+                <th>&#128077;</th>
+                <th>&#128078;</th>
+              </tr>
+            </thead>
+            <tbody id="posts-table-body"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Leaderboard -->
       <div id="view-leaderboard" class="view hidden">
-        <div class="lb-toolbar">
-          <input type="text" id="lb-filter" placeholder="Username filtern..." oninput="renderLeaderboard()" />
-        </div>
         <div class="panel">
           <table class="lb-table">
             <thead>
               <tr>
                 <th class="th-rank">#</th>
-                <th class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username"></span></th>
-                <th class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount"></span></th>
-                <th class="sortable" onclick="sortLeaderboard('likesReceived')">&#128077; <span class="sort-icon" data-col="likesReceived"></span></th>
-                <th class="sortable" onclick="sortLeaderboard('dislikesReceived')">&#128078; <span class="sort-icon" data-col="dislikesReceived"></span></th>
-                <th class="sortable" onclick="sortLeaderboard('gold')">&#128176; GOLD <span class="sort-icon" data-col="gold"></span></th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('username', this, false)">&#128269;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('postCount', this, true)">&#128269;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('likesReceived')">&#128077; <span class="sort-icon" data-col="likesReceived"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('likesReceived', this, true)">&#128269;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('dislikesReceived')">&#128078; <span class="sort-icon" data-col="dislikesReceived"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('dislikesReceived', this, true)">&#128269;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('gold')">&#128176; GOLD <span class="sort-icon" data-col="gold"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('gold', this, true)">&#128269;</button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody id="leaderboard-body"></tbody>
           </table>
+        </div>
+
+        <!-- Spaltenfilter-Dropdown -->
+        <div id="lb-col-filter" class="hidden">
+          <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()" />
+          <div id="lbf-range-wrap">
+            <input type="number" id="lbf-from" placeholder="Von" oninput="applyColFilter()" />
+            <input type="number" id="lbf-to"   placeholder="Bis" oninput="applyColFilter()" />
+          </div>
+          <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
         </div>
       </div>
 

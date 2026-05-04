@@ -1,8 +1,11 @@
-let currentUser = null;
-let refreshInterval = null;
+let currentUser      = null;
+let refreshInterval  = null;
 let lastBoardSnapshot = null;
-let lbData = [];
-let lbSort = { col: 'likesReceived', dir: 'desc' };
+let boardView        = 'cards';
+let lbData           = [];
+let lbSort           = { col: 'likesReceived', dir: 'desc' };
+let lbFilters        = {};
+let activeFilterCol  = null;
 
 // ── API ──────────────────────────────────────────
 async function api(method, url, body) {
@@ -12,6 +15,37 @@ async function api(method, url, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   return res.json();
+}
+
+// ── Char Counter ──────────────────────────────────
+function updateCharCount(el) {
+  const wrap  = el.closest('.field-wrap');
+  if (!wrap) return;
+  const max   = parseInt(el.maxLength);
+  const len   = el.value.length;
+  const pct   = len / max;
+  const counter = wrap.querySelector('.char-count');
+  const fill    = wrap.querySelector('.char-fill');
+  if (!counter || !fill) return;
+
+  counter.textContent = `${len}/${max}`;
+  fill.style.width = (pct * 100) + '%';
+
+  const warn  = pct >= 0.8;
+  const limit = pct >= 1;
+  counter.className = 'char-count' + (el.tagName === 'TEXTAREA' ? ' char-count-area' : '') + (limit ? ' limit' : warn ? ' warn' : '');
+  fill.className    = 'char-fill' + (limit ? ' limit' : warn ? ' warn' : '');
+}
+
+function checkPublishable() {
+  const title = document.getElementById('post-title');
+  const body  = document.getElementById('post-body');
+  const btn   = document.getElementById('publish-btn');
+  if (!btn) return;
+  const ok = title.value.trim().length > 0 && body.value.trim().length > 0
+          && title.value.length <= 100 && body.value.length <= 1000;
+  btn.disabled = !ok;
+  btn.classList.toggle('btn-disabled', !ok);
 }
 
 // ── Auth ─────────────────────────────────────────
@@ -29,10 +63,8 @@ async function register() {
   const { username, password, err } = getRegFields();
   if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen.'; return; }
   if (password !== document.getElementById('reg-pass2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return; }
-
   const data = await api('POST', '/api/register', { username, password });
   if (data.error) { err.textContent = data.error; return; }
-
   err.style.color = '#1a7a3a';
   err.textContent = 'Registrierung erfolgreich!';
   setTimeout(() => { err.textContent = ''; err.style.color = ''; showLogin(); }, 1500);
@@ -42,27 +74,21 @@ async function registerAndLogin() {
   const { username, password, err } = getRegFields();
   if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen.'; return; }
   if (password !== document.getElementById('reg-pass2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return; }
-
   const reg = await api('POST', '/api/register', { username, password });
   if (reg.error) { err.textContent = reg.error; return; }
-
   const login = await api('POST', '/api/login', { username, password });
   if (login.error) { err.textContent = login.error; return; }
-
   currentUser = login.username;
   showApp(login.username);
 }
 
 async function quickRegister() {
-  const id = String(Math.floor(10000000 + Math.random() * 90000000));
+  const id  = String(Math.floor(10000000 + Math.random() * 90000000));
   const err = document.getElementById('reg-error');
-
   const reg = await api('POST', '/api/register', { username: id, password: id });
   if (reg.error) { err.textContent = reg.error; return; }
-
   const login = await api('POST', '/api/login', { username: id, password: id });
   if (login.error) { err.textContent = login.error; return; }
-
   currentUser = login.username;
   showApp(login.username);
 }
@@ -71,20 +97,17 @@ function getRegFields() {
   return {
     username: document.getElementById('reg-user').value.trim().toLowerCase(),
     password: document.getElementById('reg-pass').value,
-    err: document.getElementById('reg-error')
+    err:      document.getElementById('reg-error')
   };
 }
 
 async function login() {
   const username = document.getElementById('login-user').value.trim().toLowerCase();
   const password = document.getElementById('login-pass').value;
-  const err = document.getElementById('login-error');
-
+  const err      = document.getElementById('login-error');
   if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen.'; return; }
-
   const data = await api('POST', '/api/login', { username, password });
   if (data.error) { err.textContent = data.error; return; }
-
   err.textContent = '';
   currentUser = data.username;
   showApp(data.username);
@@ -116,25 +139,41 @@ function showApp(username) {
 
 // ── Board ─────────────────────────────────────────
 async function submitPost() {
-  const title = document.getElementById('post-title').value.trim();
-  const body  = document.getElementById('post-body').value.trim();
+  const title    = document.getElementById('post-title').value.trim();
+  const body     = document.getElementById('post-body').value.trim();
+  const feedback = document.getElementById('post-feedback');
   if (!title || !body) return;
 
   const data = await api('POST', '/api/posts', { title, body });
-  if (data.error) { alert(data.error); return; }
+  feedback.classList.remove('hidden', 'success', 'error');
 
-  document.getElementById('post-title').value = '';
-  document.getElementById('post-body').value  = '';
-  lastBoardSnapshot = null;
-  loadBoardPosts();
+  if (data.error) {
+    feedback.textContent = '✗ ' + data.error;
+    feedback.classList.add('error');
+  } else {
+    feedback.textContent = '✓ Beitrag veröffentlicht!';
+    feedback.classList.add('success');
+    document.getElementById('post-title').value = '';
+    document.getElementById('post-body').value  = '';
+    // Char-Counter zurücksetzen
+    document.querySelectorAll('#view-board .field-wrap').forEach(wrap => {
+      const input = wrap.querySelector('input, textarea');
+      if (input) updateCharCount(input);
+    });
+    checkPublishable();
+    lastBoardSnapshot = null;
+    loadBoardPosts();
+    setTimeout(() => feedback.classList.add('hidden'), 3000);
+  }
 }
 
 async function loadBoardPosts() {
   const posts = await api('GET', '/api/posts');
-  const snap = JSON.stringify(posts.map(p => ({ id: p._id, up: p.upvotes, down: p.downvotes, uv: p.userVote })));
+  const snap  = JSON.stringify(posts.map(p => ({ id: p.id, up: p.upvotes, down: p.downvotes, uv: p.userVote })));
   if (snap === lastBoardSnapshot) return;
   lastBoardSnapshot = snap;
   renderPosts(posts, document.getElementById('posts-container'));
+  renderPostsTable(posts);
 }
 
 function startBoardRefresh() {
@@ -146,6 +185,34 @@ function stopBoardRefresh() {
   if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
 }
 
+// ── Board View Toggle ─────────────────────────────
+function setBoardView(view) {
+  boardView = view;
+  document.getElementById('posts-container').classList.toggle('hidden', view !== 'cards');
+  document.getElementById('posts-table-container').classList.toggle('hidden', view !== 'table');
+  document.getElementById('btn-cards').classList.toggle('active', view === 'cards');
+  document.getElementById('btn-table').classList.toggle('active', view === 'table');
+}
+
+function renderPostsTable(posts) {
+  const tbody = document.getElementById('posts-table-body');
+  if (!tbody) return;
+  if (!Array.isArray(posts) || posts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="no-posts">Noch keine Beiträge vorhanden.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = posts.map(p => {
+    const date = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
+    return `<tr>
+      <td><a href="#profile/${encodeURIComponent(p.author)}" class="author-link" onclick="event.stopPropagation()">${escapeHtml(p.title)}</a></td>
+      <td><a href="#profile/${encodeURIComponent(p.author)}" class="author-link">${escapeHtml(p.author)}</a></td>
+      <td class="col-num">${date}</td>
+      <td class="col-likes col-num">${p.upvotes}</td>
+      <td class="col-dislikes col-num">${p.downvotes}</td>
+    </tr>`;
+  }).join('');
+}
+
 // ── Votes ─────────────────────────────────────────
 async function vote(btn) {
   const postId    = btn.dataset.postId;
@@ -153,7 +220,8 @@ async function vote(btn) {
   const current   = btn.dataset.userVote;
   const newVote   = current === direction ? null : direction;
 
-  await api('POST', `/api/posts/${postId}/vote`, { vote: newVote });
+  const result = await api('POST', `/api/posts/${postId}/vote`, { vote: newVote });
+  if (result.error) return;
   lastBoardSnapshot = null;
 
   const hash = window.location.hash || '#board';
@@ -162,9 +230,11 @@ async function vote(btn) {
   } else if (hash.startsWith('#profile')) {
     const parts    = hash.split('/');
     const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
-    const posts    = await api('GET', `/api/posts?author=${encodeURIComponent(username)}`);
+    const [posts, profile] = await Promise.all([
+      api('GET', `/api/posts?author=${encodeURIComponent(username)}`),
+      api('GET', `/api/profile/${encodeURIComponent(username)}`)
+    ]);
     renderPosts(posts, document.getElementById('profile-posts-container'));
-    const profile  = await api('GET', `/api/profile/${encodeURIComponent(username)}`);
     updateProfileStats(profile);
   }
 }
@@ -185,19 +255,88 @@ function sortLeaderboard(col) {
   renderLeaderboard();
 }
 
-function renderLeaderboard() {
-  const filter = (document.getElementById('lb-filter')?.value || '').toLowerCase();
-  const tbody  = document.getElementById('leaderboard-body');
+function openColFilter(col, btn, isNumeric) {
+  const dropdown = document.getElementById('lb-col-filter');
 
-  // Sort-Icons aktualisieren
+  if (activeFilterCol === col && !dropdown.classList.contains('hidden')) {
+    dropdown.classList.add('hidden');
+    activeFilterCol = null;
+    return;
+  }
+
+  activeFilterCol = col;
+  dropdown.dataset.col = col;
+
+  document.getElementById('lbf-range-wrap').style.display = isNumeric ? 'flex' : 'none';
+  const f = lbFilters[col] || {};
+  document.getElementById('lbf-text').value = f.text || '';
+  document.getElementById('lbf-from').value = f.from ?? '';
+  document.getElementById('lbf-to').value   = f.to   ?? '';
+
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.top  = (rect.bottom + 4) + 'px';
+  dropdown.style.left = Math.max(0, rect.left - 100) + 'px';
+  dropdown.classList.remove('hidden');
+
+  // Aktive Filter-Buttons highlighten
+  document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (f.text || f.from !== undefined || f.to !== undefined) btn.classList.add('active');
+
+  setTimeout(() => document.getElementById('lbf-text').focus(), 50);
+}
+
+function applyColFilter() {
+  const col  = document.getElementById('lb-col-filter').dataset.col;
+  if (!col) return;
+  const text = document.getElementById('lbf-text').value.trim().toLowerCase();
+  const from = document.getElementById('lbf-from').value;
+  const to   = document.getElementById('lbf-to').value;
+
+  if (!text && from === '' && to === '') {
+    delete lbFilters[col];
+  } else {
+    lbFilters[col] = {
+      text: text || '',
+      from: from !== '' ? parseFloat(from) : undefined,
+      to:   to   !== '' ? parseFloat(to)   : undefined
+    };
+  }
+  renderLeaderboard();
+}
+
+function clearColFilter() {
+  const col = document.getElementById('lb-col-filter').dataset.col;
+  if (col) delete lbFilters[col];
+  document.getElementById('lbf-text').value = '';
+  document.getElementById('lbf-from').value = '';
+  document.getElementById('lbf-to').value   = '';
+  document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('lb-col-filter').classList.add('hidden');
+  activeFilterCol = null;
+  renderLeaderboard();
+}
+
+function renderLeaderboard() {
+  const tbody = document.getElementById('leaderboard-body');
+
+  // Sort-Icons
   document.querySelectorAll('.sort-icon').forEach(el => {
     el.className = 'sort-icon' + (el.dataset.col === lbSort.col ? ` ${lbSort.dir}` : '');
   });
-  document.querySelectorAll('.lb-table th').forEach(th => {
-    th.classList.toggle('active-sort', th.querySelector(`[data-col="${lbSort.col}"]`) !== null);
+
+  // Filtern
+  let data = [...lbData].filter(u => {
+    for (const [col, f] of Object.entries(lbFilters)) {
+      const val = u[col];
+      if (f.text && !String(val).toLowerCase().includes(f.text)) return false;
+      if (f.from !== undefined && Number(val) < f.from) return false;
+      if (f.to   !== undefined && Number(val) > f.to)   return false;
+    }
+    return true;
   });
 
-  let data = lbData.filter(u => u.username.includes(filter));
+  // Sortieren
   data.sort((a, b) => {
     const dir = lbSort.dir === 'asc' ? 1 : -1;
     if (lbSort.col === 'username') return a.username.localeCompare(b.username) * dir;
@@ -233,7 +372,8 @@ async function loadProfile(username) {
     document.getElementById('profile-avatar').textContent   = '?';
     document.getElementById('profile-username').textContent = 'User nicht gefunden';
     document.getElementById('profile-joined').textContent   = '';
-    ['stat-posts','stat-likes','stat-dislikes','stat-gold'].forEach(id => document.getElementById(id).textContent = '–');
+    ['stat-posts','stat-likes','stat-dislikes','stat-gold'].forEach(id =>
+      document.getElementById(id).textContent = '–');
     document.getElementById('profile-posts-container').innerHTML = '';
     return;
   }
@@ -247,7 +387,7 @@ async function loadProfile(username) {
 }
 
 function updateProfileStats(profile) {
-  document.getElementById('stat-posts').textContent    = profile.postCount    ?? '–';
+  document.getElementById('stat-posts').textContent    = profile.postCount        ?? '–';
   document.getElementById('stat-likes').textContent    = profile.likesReceived    ?? '–';
   document.getElementById('stat-dislikes').textContent = profile.dislikesReceived ?? '–';
   document.getElementById('stat-gold').textContent     = profile.gold             ?? '–';
@@ -261,15 +401,26 @@ function renderPosts(posts, container) {
   }
 
   container.innerHTML = posts.map(p => {
-    const date = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
-    const voters = Array.isArray(p.voters) ? p.voters : [];
-    const voterHtml = voters.length ? `
-      <div class="voter-list">
-        ${voters.map(v => `
+    const date      = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
+    const voters    = Array.isArray(p.voters) ? p.voters : [];
+    const isOwn     = p.author === currentUser;
+
+    const voteBtns  = isOwn
+      ? `<span class="own-post-note">Eigene Posts können nicht bewertet werden</span>`
+      : `<button class="vote-btn ${p.userVote === 'up' ? 'active-up' : ''}"
+                 data-post-id="${p.id}" data-direction="up" data-user-vote="${p.userVote || ''}"
+                 onclick="vote(this)">&#128077; ${p.upvotes}</button>
+         <button class="vote-btn ${p.userVote === 'down' ? 'active-down' : ''}"
+                 data-post-id="${p.id}" data-direction="down" data-user-vote="${p.userVote || ''}"
+                 onclick="vote(this)">&#128078; ${p.downvotes}</button>`;
+
+    const voterHtml = voters.length
+      ? voters.map(v => `
           <a href="#profile/${encodeURIComponent(v.username)}" class="voter-chip ${v.vote}">
             ${v.vote === 'up' ? '&#128077;' : '&#128078;'} ${escapeHtml(v.username)}
-          </a>`).join('')}
-      </div>` : '';
+          </a>`).join('')
+      : '';
+
     return `
       <div class="post">
         <div class="post-header">
@@ -280,15 +431,10 @@ function renderPosts(posts, container) {
           </span>
         </div>
         <p class="post-body">${escapeHtml(p.body)}</p>
-        <div class="post-votes">
-          <button class="vote-btn ${p.userVote === 'up' ? 'active-up' : ''}"
-                  data-post-id="${p.id}" data-direction="up" data-user-vote="${p.userVote || ''}"
-                  onclick="vote(this)">&#128077; ${p.upvotes}</button>
-          <button class="vote-btn ${p.userVote === 'down' ? 'active-down' : ''}"
-                  data-post-id="${p.id}" data-direction="down" data-user-vote="${p.userVote || ''}"
-                  onclick="vote(this)">&#128078; ${p.downvotes}</button>
+        <div class="votes-area">
+          <div class="post-votes">${voteBtns}</div>
+          ${voterHtml ? `<div class="voter-list">${voterHtml}</div>` : ''}
         </div>
-        ${voterHtml}
       </div>`;
   }).join('');
 }
@@ -313,6 +459,7 @@ function handleRoute() {
   const hash = window.location.hash || '#board';
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   stopBoardRefresh();
+  document.getElementById('lb-col-filter')?.classList.add('hidden');
 
   if (hash === '#board' || hash === '#' || hash === '') {
     document.querySelector('[href="#board"]').classList.add('active');
@@ -338,6 +485,16 @@ function showView(name) {
 }
 
 window.addEventListener('hashchange', handleRoute);
+
+// Dropdown schließen bei Klick außerhalb
+document.addEventListener('click', e => {
+  const dropdown = document.getElementById('lb-col-filter');
+  if (dropdown && !dropdown.classList.contains('hidden') &&
+      !dropdown.contains(e.target) && !e.target.classList.contains('col-filter-btn')) {
+    dropdown.classList.add('hidden');
+    activeFilterCol = null;
+  }
+});
 
 // ── Init ─────────────────────────────────────────
 (async () => {

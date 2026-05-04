@@ -142,6 +142,8 @@ app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
   if (!pRows[0]) return res.status(404).json({ error: 'Post nicht gefunden' });
   const author = pRows[0].author;
 
+  if (author === username) return res.status(403).json({ error: 'Eigene Posts können nicht bewertet werden' });
+
   // Bestehenden Vote holen
   const { rows: vRows } = await pool.query(
     'SELECT vote FROM votes WHERE post_id = $1 AND username = $2', [id, username]
