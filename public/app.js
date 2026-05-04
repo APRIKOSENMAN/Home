@@ -304,11 +304,13 @@ async function loadLeaderboard() {
 }
 
 function sortLeaderboard(col) {
-  if (lbSort.col === col) {
+  // rank column sorts by gold
+  const effectiveCol = col === 'rank' ? 'gold' : col;
+  if (lbSort.col === effectiveCol) {
     lbSort.dir = lbSort.dir === 'desc' ? 'asc' : 'desc';
   } else {
-    lbSort.col = col;
-    lbSort.dir = col === 'username' ? 'asc' : 'desc';
+    lbSort.col = effectiveCol;
+    lbSort.dir = effectiveCol === 'username' ? 'asc' : 'desc';
   }
   renderLeaderboard();
 }
@@ -337,11 +339,17 @@ function openColFilter(col, btn, isNumeric, table) {
   document.getElementById('lbf-from').value = f.from ?? '';
   document.getElementById('lbf-to').value   = f.to   ?? '';
 
-  // Position upward from button
+  // Smart vertical positioning: open downward unless more space above
   const rect = btn.getBoundingClientRect();
-  dropdown.style.top    = 'auto';
-  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-  dropdown.style.left   = Math.max(4, rect.left - 80) + 'px';
+  const dropH = 150;
+  dropdown.style.left = Math.max(4, rect.left - 80) + 'px';
+  if (window.innerHeight - rect.bottom >= dropH || window.innerHeight - rect.bottom >= rect.top) {
+    dropdown.style.top    = (rect.bottom + 4) + 'px';
+    dropdown.style.bottom = 'auto';
+  } else {
+    dropdown.style.top    = 'auto';
+    dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  }
   dropdown.classList.remove('hidden');
 
   document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
@@ -422,9 +430,17 @@ function updateColClearBtns(table) {
 function renderLeaderboard() {
   const tbody = document.getElementById('leaderboard-body');
 
-  // Sort icons
+  // Pre-compute gold-based ranks (ties get same rank)
+  const goldRanks = {};
+  lbData.forEach(u => {
+    goldRanks[u.username] = lbData.filter(x => x.gold > u.gold).length + 1;
+  });
+
+  // Sort icons — rank icon activates when sorting by gold
   document.querySelectorAll('.sort-icon[data-table="lb"]').forEach(el => {
-    el.className = 'sort-icon' + (el.dataset.col === lbSort.col ? ` ${lbSort.dir}` : '');
+    const active = el.dataset.col === lbSort.col ||
+                   (el.dataset.col === 'rank' && lbSort.col === 'gold');
+    el.className = 'sort-icon' + (active ? ` ${lbSort.dir}` : '');
   });
 
   // Filter
@@ -451,9 +467,9 @@ function renderLeaderboard() {
     return;
   }
 
-  tbody.innerHTML = data.map((u, i) => `
+  tbody.innerHTML = data.map(u => `
     <tr>
-      <td class="rank">${i + 1}</td>
+      <td class="rank">${goldRanks[u.username]}</td>
       <td><a href="#profile/${encodeURIComponent(u.username)}" class="author-link">${escapeHtml(u.username)}</a></td>
       <td class="col-num">${u.postCount}</td>
       <td class="col-likes">${u.likesReceived}</td>

@@ -150,7 +150,11 @@
           <table class="lb-table">
             <thead>
               <tr>
-                <th class="th-rank">#</th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('rank')">RANK <span class="sort-icon" data-col="rank" data-table="lb"></span></span>
+                  </div>
+                </th>
                 <th>
                   <div class="th-inner">
                     <span class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username" data-table="lb"></span></span>
@@ -192,18 +196,6 @@
           </table>
         </div>
 
-        <!-- Spaltenfilter-Dropdown -->
-        <div id="lb-col-filter" class="hidden">
-          <div id="lbf-range-wrap">
-            <input type="number" id="lbf-from" placeholder="Von" oninput="applyColFilter()"
-                   onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
-            <input type="number" id="lbf-to"   placeholder="Bis" oninput="applyColFilter()"
-                   onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
-          </div>
-          <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()"
-                 onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
-          <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
-        </div>
       </div>
 
       <!-- Profil -->
@@ -242,6 +234,19 @@
       </div>
 
     </main>
+
+    <!-- Shared column filter dropdown (used by both leaderboard and posts table) -->
+    <div id="lb-col-filter" class="hidden">
+      <div id="lbf-range-wrap">
+        <input type="number" id="lbf-from" placeholder="Von" oninput="applyColFilter()"
+               onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
+        <input type="number" id="lbf-to"   placeholder="Bis" oninput="applyColFilter()"
+               onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
+      </div>
+      <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()"
+             onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
+      <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
+    </div>
   </div>
 
   <script src="app.js"></script>
