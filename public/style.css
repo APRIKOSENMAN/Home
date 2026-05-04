@@ -297,9 +297,16 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .lb-table th.sortable { cursor: pointer; user-select: none; }
 .lb-table th.sortable:hover { background: #253d57; }
 .lb-table th.active-sort { background: #1a3050; }
-.sort-icon::after       { content: '↕'; margin-left: .3rem; color: rgba(255,255,255,.25); font-size: .7rem; }
-.sort-icon.asc::after  { content: '▲'; color: #fff; }
-.sort-icon.desc::after { content: '▼'; color: #fff; }
+.sort-icon {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  margin-left: .25rem;
+  vertical-align: middle;
+}
+.sort-icon::after      { content: '↕'; color: rgba(255,255,255,.25); font-size: .65rem; }
+.sort-icon.asc::after  { content: '▲'; color: #fff; font-size: .65rem; }
+.sort-icon.desc::after { content: '▼'; color: #fff; font-size: .65rem; }
 
 .lb-toolbar {
   display: flex; gap: .6rem; margin-bottom: .5rem;
@@ -447,6 +454,10 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 }
 .toggle-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .toggle-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+
+/* Space above filterable tables so upward dropdown has room */
+#view-leaderboard .panel { margin-top: 130px; }
+#posts-table-container   { margin-top: 130px; }
 
 /* ── POSTS TABLE VIEW ─────────────────────────── */
 .posts-table {

@@ -339,17 +339,11 @@ function openColFilter(col, btn, isNumeric, table) {
   document.getElementById('lbf-from').value = f.from ?? '';
   document.getElementById('lbf-to').value   = f.to   ?? '';
 
-  // Smart vertical positioning: open downward unless more space above
+  // Always open upward (tables have margin-top to ensure room)
   const rect = btn.getBoundingClientRect();
-  const dropH = 150;
-  dropdown.style.left = Math.max(4, rect.left - 80) + 'px';
-  if (window.innerHeight - rect.bottom >= dropH || window.innerHeight - rect.bottom >= rect.top) {
-    dropdown.style.top    = (rect.bottom + 4) + 'px';
-    dropdown.style.bottom = 'auto';
-  } else {
-    dropdown.style.top    = 'auto';
-    dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-  }
+  dropdown.style.left   = Math.max(4, rect.left - 80) + 'px';
+  dropdown.style.top    = 'auto';
+  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
   dropdown.classList.remove('hidden');
 
   document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
@@ -414,6 +408,13 @@ function clearOneColFilter(col, table) {
   if (!table) table = 'lb';
   const filters = table === 'lb' ? lbFilters : ptFilters;
   delete filters[col];
+  // Also reset sort if this column is currently active
+  if (table === 'lb') {
+    const effectiveCol = col === 'rank' ? 'gold' : col;
+    if (lbSort.col === effectiveCol) lbSort = { col: 'gold', dir: 'desc' };
+  } else {
+    if (ptSort.col === col) ptSort = { col: 'created_at', dir: 'desc' };
+  }
   updateColClearBtns(table);
   if (table === 'lb') renderLeaderboard();
   else                renderPostsTable();
@@ -421,9 +422,13 @@ function clearOneColFilter(col, table) {
 
 function updateColClearBtns(table) {
   const filters = table === 'lb' ? lbFilters : ptFilters;
+  const sort    = table === 'lb' ? lbSort    : ptSort;
   document.querySelectorAll(`.col-clear-btn[data-table="${table}"]`).forEach(btn => {
-    const col = btn.dataset.col;
-    btn.classList.toggle('hidden', !filters[col]);
+    const col         = btn.dataset.col;
+    const effectiveCol = (table === 'lb' && col === 'rank') ? 'gold' : col;
+    const hasFilter   = !!filters[col];
+    const isSorted    = sort.col === effectiveCol;
+    btn.classList.toggle('hidden', !hasFilter && !isSorted);
   });
 }
 
