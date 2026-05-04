@@ -1,6 +1,8 @@
 let currentUser = null;
 let refreshInterval = null;
 let lastBoardSnapshot = null;
+let lbData = [];
+let lbSort = { col: 'likesReceived', dir: 'desc' };
 
 // ── API ──────────────────────────────────────────
 async function api(method, url, body) {
@@ -169,11 +171,41 @@ async function vote(btn) {
 
 // ── Leaderboard ───────────────────────────────────
 async function loadLeaderboard() {
-  const data = await api('GET', '/api/leaderboard');
-  const tbody = document.getElementById('leaderboard-body');
+  lbData = await api('GET', '/api/leaderboard');
+  renderLeaderboard();
+}
 
-  if (!Array.isArray(data) || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="no-posts">Keine User vorhanden.</td></tr>';
+function sortLeaderboard(col) {
+  if (lbSort.col === col) {
+    lbSort.dir = lbSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    lbSort.col = col;
+    lbSort.dir = col === 'username' ? 'asc' : 'desc';
+  }
+  renderLeaderboard();
+}
+
+function renderLeaderboard() {
+  const filter = (document.getElementById('lb-filter')?.value || '').toLowerCase();
+  const tbody  = document.getElementById('leaderboard-body');
+
+  // Sort-Icons aktualisieren
+  document.querySelectorAll('.sort-icon').forEach(el => {
+    el.className = 'sort-icon' + (el.dataset.col === lbSort.col ? ` ${lbSort.dir}` : '');
+  });
+  document.querySelectorAll('.lb-table th').forEach(th => {
+    th.classList.toggle('active-sort', th.querySelector(`[data-col="${lbSort.col}"]`) !== null);
+  });
+
+  let data = lbData.filter(u => u.username.includes(filter));
+  data.sort((a, b) => {
+    const dir = lbSort.dir === 'asc' ? 1 : -1;
+    if (lbSort.col === 'username') return a.username.localeCompare(b.username) * dir;
+    return ((a[lbSort.col] ?? 0) - (b[lbSort.col] ?? 0)) * dir;
+  });
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-posts">Keine User gefunden.</td></tr>';
     return;
   }
 
@@ -229,7 +261,15 @@ function renderPosts(posts, container) {
   }
 
   container.innerHTML = posts.map(p => {
-    const date = new Date(p.createdAt).toLocaleString('de-DE');
+    const date = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
+    const voters = Array.isArray(p.voters) ? p.voters : [];
+    const voterHtml = voters.length ? `
+      <div class="voter-list">
+        ${voters.map(v => `
+          <a href="#profile/${encodeURIComponent(v.username)}" class="voter-chip ${v.vote}">
+            ${v.vote === 'up' ? '&#128077;' : '&#128078;'} ${escapeHtml(v.username)}
+          </a>`).join('')}
+      </div>` : '';
     return `
       <div class="post">
         <div class="post-header">
@@ -242,12 +282,13 @@ function renderPosts(posts, container) {
         <p class="post-body">${escapeHtml(p.body)}</p>
         <div class="post-votes">
           <button class="vote-btn ${p.userVote === 'up' ? 'active-up' : ''}"
-                  data-post-id="${p._id}" data-direction="up" data-user-vote="${p.userVote || ''}"
+                  data-post-id="${p.id}" data-direction="up" data-user-vote="${p.userVote || ''}"
                   onclick="vote(this)">&#128077; ${p.upvotes}</button>
           <button class="vote-btn ${p.userVote === 'down' ? 'active-down' : ''}"
-                  data-post-id="${p._id}" data-direction="down" data-user-vote="${p.userVote || ''}"
+                  data-post-id="${p.id}" data-direction="down" data-user-vote="${p.userVote || ''}"
                   onclick="vote(this)">&#128078; ${p.downvotes}</button>
         </div>
+        ${voterHtml}
       </div>`;
   }).join('');
 }

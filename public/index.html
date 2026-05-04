@@ -76,17 +76,19 @@
 
       <!-- Leaderboard -->
       <div id="view-leaderboard" class="view hidden">
-        <div class="panel-label">LEADERBOARD — SORTIERT NACH LIKES</div>
+        <div class="lb-toolbar">
+          <input type="text" id="lb-filter" placeholder="Username filtern..." oninput="renderLeaderboard()" />
+        </div>
         <div class="panel">
           <table class="lb-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>USERNAME</th>
-                <th>BEITRÄGE</th>
-                <th>&#128077;</th>
-                <th>&#128078;</th>
-                <th>&#128176; GOLD</th>
+                <th class="th-rank">#</th>
+                <th class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username"></span></th>
+                <th class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount"></span></th>
+                <th class="sortable" onclick="sortLeaderboard('likesReceived')">&#128077; <span class="sort-icon" data-col="likesReceived"></span></th>
+                <th class="sortable" onclick="sortLeaderboard('dislikesReceived')">&#128078; <span class="sort-icon" data-col="dislikesReceived"></span></th>
+                <th class="sortable" onclick="sortLeaderboard('gold')">&#128176; GOLD <span class="sort-icon" data-col="gold"></span></th>
               </tr>
             </thead>
             <tbody id="leaderboard-body"></tbody>

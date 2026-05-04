@@ -12,12 +12,12 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Tabellen beim Start anlegen
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       username   TEXT PRIMARY KEY,
       password   TEXT NOT NULL,
+      gold       INTEGER DEFAULT 100,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS posts (
@@ -34,6 +34,8 @@ async function initDb() {
       PRIMARY KEY (post_id, username)
     );
   `);
+  // Migration: gold-Spalte zu bestehenden Usern hinzufügen falls fehlt
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gold INTEGER DEFAULT 100;`);
 }
 
 app.use(express.json());
@@ -50,8 +52,6 @@ function requireAuth(req, res, next) {
   next();
 }
 
-const calcGold = (posts, likes) => 100 + posts * 10 + likes;
-
 // ── Auth ──────────────────────────────────────────
 
 app.post('/api/register', async (req, res) => {
@@ -63,7 +63,7 @@ app.post('/api/register', async (req, res) => {
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, hash]);
+    await pool.query('INSERT INTO users (username, password, gold) VALUES ($1, $2, 100)', [username, hash]);
     res.json({ ok: true });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Benutzername bereits vergeben' });
@@ -84,7 +84,6 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ ok: true }); });
-
 app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }));
 
 // ── Posts ─────────────────────────────────────────
@@ -97,7 +96,15 @@ app.get('/api/posts', requireAuth, async (req, res) => {
     SELECT p.*,
       COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS upvotes,
       COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS downvotes,
-      MAX(CASE WHEN v.username = $1 THEN v.vote END)    AS "userVote"
+      MAX(CASE WHEN v.username = $1 THEN v.vote END)    AS "userVote",
+      COALESCE(
+        json_agg(
+          CASE WHEN v.username IS NOT NULL
+          THEN json_build_object('username', v.username, 'vote', v.vote)
+          END
+        ) FILTER (WHERE v.username IS NOT NULL),
+        '[]'
+      ) AS voters
     FROM posts p
     LEFT JOIN votes v ON v.post_id = p.id
     ${author ? 'WHERE p.author = $2' : ''}
@@ -113,26 +120,59 @@ app.get('/api/posts', requireAuth, async (req, res) => {
 app.post('/api/posts', requireAuth, async (req, res) => {
   const { title, body } = req.body;
   if (!title || !body) return res.status(400).json({ error: 'Titel und Inhalt erforderlich' });
+
   const { rows } = await pool.query(
     'INSERT INTO posts (id, title, body, author) VALUES ($1, $2, $3, $4) RETURNING *',
     [randomUUID(), title, body, req.session.username]
   );
-  res.json({ ...rows[0], upvotes: 0, downvotes: 0, userVote: null });
+
+  // +10 Gold für neuen Post
+  await pool.query('UPDATE users SET gold = gold + 10 WHERE username = $1', [req.session.username]);
+
+  res.json({ ...rows[0], upvotes: 0, downvotes: 0, userVote: null, voters: [] });
 });
 
 app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
-  const { id } = req.params;
-  const { vote } = req.body;
-  const username = req.session.username;
+  const { id }          = req.params;
+  const { vote: newVote } = req.body;
+  const username        = req.session.username;
 
-  if (!vote) {
+  // Post-Autor holen
+  const { rows: pRows } = await pool.query('SELECT author FROM posts WHERE id = $1', [id]);
+  if (!pRows[0]) return res.status(404).json({ error: 'Post nicht gefunden' });
+  const author = pRows[0].author;
+
+  // Bestehenden Vote holen
+  const { rows: vRows } = await pool.query(
+    'SELECT vote FROM votes WHERE post_id = $1 AND username = $2', [id, username]
+  );
+  const oldVote = vRows[0]?.vote || null;
+
+  // Gold-Delta berechnen
+  let goldDelta = 0;
+  if (oldVote === 'up')   goldDelta -= 1;
+  if (oldVote === 'down') goldDelta += 1;
+  if (newVote === 'up')   goldDelta += 1;
+  if (newVote === 'down') goldDelta -= 1;
+
+  // Vote aktualisieren
+  if (!newVote) {
     await pool.query('DELETE FROM votes WHERE post_id = $1 AND username = $2', [id, username]);
   } else {
     await pool.query(
       'INSERT INTO votes (post_id, username, vote) VALUES ($1, $2, $3) ON CONFLICT (post_id, username) DO UPDATE SET vote = $3',
-      [id, username, vote]
+      [id, username, newVote]
     );
   }
+
+  // Gold beim Autor aktualisieren (minimum 0, eigene Posts ausgenommen)
+  if (goldDelta !== 0 && author !== username) {
+    await pool.query(
+      'UPDATE users SET gold = GREATEST(0, gold + $1) WHERE username = $2',
+      [goldDelta, author]
+    );
+  }
+
   res.json({ ok: true });
 });
 
@@ -153,11 +193,13 @@ app.get('/api/profile/:username', requireAuth, async (req, res) => {
     WHERE p.author = $1
   `, [username]);
 
-  const { postCount, likesReceived, dislikesReceived } = s[0];
   res.json({
-    username, postCount, likesReceived, dislikesReceived,
-    gold: calcGold(postCount, likesReceived),
-    createdAt: u[0].created_at
+    username,
+    postCount:        s[0].postCount,
+    likesReceived:    s[0].likesReceived,
+    dislikesReceived: s[0].dislikesReceived,
+    gold:             u[0].gold,
+    createdAt:        u[0].created_at
   });
 });
 
@@ -167,15 +209,14 @@ app.get('/api/leaderboard', requireAuth, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT
       u.username,
+      u.gold,
       COUNT(DISTINCT p.id)::int                         AS "postCount",
       COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS "likesReceived",
-      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived",
-      (100 + COUNT(DISTINCT p.id)::int * 10
-           + COUNT(CASE WHEN v.vote = 'up' THEN 1 END)::int) AS gold
+      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived"
     FROM users u
-    LEFT JOIN posts  p ON p.author   = u.username
-    LEFT JOIN votes  v ON v.post_id  = p.id
-    GROUP BY u.username
+    LEFT JOIN posts  p ON p.author  = u.username
+    LEFT JOIN votes  v ON v.post_id = p.id
+    GROUP BY u.username, u.gold
     ORDER BY "likesReceived" DESC
   `);
   res.json(rows);
