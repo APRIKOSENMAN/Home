@@ -178,6 +178,29 @@ app.post('/api/posts/:id/vote', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete('/api/posts/:id', requireAuth, async (req, res) => {
+  const { id }     = req.params;
+  const username   = req.session.username;
+
+  const { rows } = await pool.query('SELECT author FROM posts WHERE id = $1', [id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Post nicht gefunden' });
+  if (rows[0].author !== username) return res.status(403).json({ error: 'Nicht erlaubt' });
+
+  // Reverse vote-based gold and post gold
+  const { rows: voteRows } = await pool.query(
+    `SELECT COUNT(CASE WHEN vote='up' THEN 1 END)::int   AS ups,
+            COUNT(CASE WHEN vote='down' THEN 1 END)::int AS downs
+     FROM votes WHERE post_id = $1`, [id]
+  );
+  const goldDelta = 10 + (voteRows[0].ups - voteRows[0].downs);
+  await pool.query('UPDATE users SET gold = GREATEST(0, gold - $1) WHERE username = $2', [goldDelta, username]);
+
+  await pool.query('DELETE FROM votes WHERE post_id = $1', [id]);
+  await pool.query('DELETE FROM posts WHERE id = $1', [id]);
+
+  res.json({ ok: true });
+});
+
 // ── Profil ────────────────────────────────────────
 
 app.get('/api/profile/:username', requireAuth, async (req, res) => {

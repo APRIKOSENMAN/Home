@@ -542,3 +542,13 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .lbf-clear:hover { border-color: var(--dislike); color: var(--dislike); }
 
 .own-post-note { font-size: .72rem; color: #bbb; font-style: italic; }
+
+.delete-btn {
+  background: none; border: none;
+  color: var(--muted); cursor: pointer;
+  font-size: .85rem; padding: .1rem .25rem;
+  border-radius: var(--radius);
+  transition: color .15s, background .15s;
+  vertical-align: middle; margin-left: .3rem;
+}
+.delete-btn:hover { color: var(--dislike); background: #ffebee; }

@@ -511,7 +511,20 @@ async function loadProfile(username) {
   document.getElementById('profile-joined').textContent   =
     `SEIT ${new Date(profile.createdAt).toLocaleDateString('de-DE')}`;
   updateProfileStats(profile);
-  renderPosts(posts, document.getElementById('profile-posts-container'));
+  const ownProfile = uname === currentUser;
+  renderPosts(posts, document.getElementById('profile-posts-container'), ownProfile);
+}
+
+async function deletePost(postId) {
+  if (!confirm('Beitrag wirklich löschen?')) return;
+  const result = await api('DELETE', `/api/posts/${postId}`);
+  if (result.error) { alert(result.error); return; }
+  const [posts, profile] = await Promise.all([
+    api('GET', `/api/posts?author=${encodeURIComponent(currentUser)}`),
+    api('GET', `/api/profile/${encodeURIComponent(currentUser)}`)
+  ]);
+  renderPosts(posts, document.getElementById('profile-posts-container'), true);
+  updateProfileStats(profile);
 }
 
 function updateProfileStats(profile) {
@@ -524,7 +537,7 @@ function updateProfileStats(profile) {
 }
 
 // ── Posts rendern ─────────────────────────────────
-function renderPosts(posts, container) {
+function renderPosts(posts, container, showDelete = false) {
   if (!Array.isArray(posts) || posts.length === 0) {
     container.innerHTML = '<p class="no-posts">Noch keine Beiträge vorhanden.</p>';
     return;
@@ -544,6 +557,10 @@ function renderPosts(posts, container) {
                  data-post-id="${p.id}" data-direction="down" data-user-vote="${p.userVote || ''}"
                  onclick="vote(this)">&#128078; ${p.downvotes}</button>`;
 
+    const deleteBtn = showDelete
+      ? `<button class="delete-btn" onclick="deletePost('${p.id}')" title="Beitrag löschen">&#128465;</button>`
+      : '';
+
     const voterHtml = voters.length
       ? voters.map(v => `
           <a href="#profile/${encodeURIComponent(v.username)}" class="voter-chip ${v.vote}">
@@ -558,6 +575,7 @@ function renderPosts(posts, container) {
           <span class="post-meta">
             <a href="#profile/${encodeURIComponent(p.author)}" class="author-link">${escapeHtml(p.author)}</a>
             &middot; ${date}
+            ${deleteBtn}
           </span>
         </div>
         <p class="post-body">${escapeHtml(p.body)}</p>
