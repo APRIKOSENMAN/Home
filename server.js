@@ -195,12 +195,18 @@ app.get('/api/profile/:username', requireAuth, async (req, res) => {
     WHERE p.author = $1
   `, [username]);
 
+  const { rows: rankRow } = await pool.query(
+    `SELECT COUNT(*)::int + 1 AS rank FROM users WHERE gold > (SELECT gold FROM users WHERE username = $1)`,
+    [username]
+  );
+
   res.json({
     username,
     postCount:        s[0].postCount,
     likesReceived:    s[0].likesReceived,
     dislikesReceived: s[0].dislikesReceived,
     gold:             u[0].gold,
+    rank:             rankRow[0]?.rank ?? null,
     createdAt:        u[0].created_at
   });
 });

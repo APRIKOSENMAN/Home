@@ -102,11 +102,41 @@
           <table class="posts-table">
             <thead>
               <tr>
-                <th>TITEL</th>
-                <th>AUTOR</th>
-                <th>DATUM</th>
-                <th>&#128077;</th>
-                <th>&#128078;</th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortPostsTable('title')">TITEL <span class="sort-icon" data-col="title" data-table="pt"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('title', this, false, 'pt')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="title" data-table="pt" onclick="clearOneColFilter('title', 'pt')">&#10005;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortPostsTable('author')">AUTOR <span class="sort-icon" data-col="author" data-table="pt"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('author', this, false, 'pt')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="author" data-table="pt" onclick="clearOneColFilter('author', 'pt')">&#10005;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortPostsTable('created_at')">DATUM <span class="sort-icon" data-col="created_at" data-table="pt"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('created_at', this, false, 'pt')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="created_at" data-table="pt" onclick="clearOneColFilter('created_at', 'pt')">&#10005;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortPostsTable('upvotes')">&#128077; <span class="sort-icon" data-col="upvotes" data-table="pt"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('upvotes', this, true, 'pt')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="upvotes" data-table="pt" onclick="clearOneColFilter('upvotes', 'pt')">&#10005;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortPostsTable('downvotes')">&#128078; <span class="sort-icon" data-col="downvotes" data-table="pt"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('downvotes', this, true, 'pt')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="downvotes" data-table="pt" onclick="clearOneColFilter('downvotes', 'pt')">&#10005;</button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody id="posts-table-body"></tbody>
@@ -123,32 +153,37 @@
                 <th class="th-rank">#</th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username"></span></span>
-                    <button class="col-filter-btn" onclick="openColFilter('username', this, false)">&#128269;</button>
+                    <span class="sortable" onclick="sortLeaderboard('username')">USERNAME <span class="sort-icon" data-col="username" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('username', this, false, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="username" data-table="lb" onclick="clearOneColFilter('username', 'lb')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount"></span></span>
-                    <button class="col-filter-btn" onclick="openColFilter('postCount', this, true)">&#128269;</button>
+                    <span class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('postCount', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="postCount" data-table="lb" onclick="clearOneColFilter('postCount', 'lb')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('likesReceived')">&#128077; <span class="sort-icon" data-col="likesReceived"></span></span>
-                    <button class="col-filter-btn" onclick="openColFilter('likesReceived', this, true)">&#128269;</button>
+                    <span class="sortable" onclick="sortLeaderboard('likesReceived')">&#128077; <span class="sort-icon" data-col="likesReceived" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('likesReceived', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="likesReceived" data-table="lb" onclick="clearOneColFilter('likesReceived', 'lb')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('dislikesReceived')">&#128078; <span class="sort-icon" data-col="dislikesReceived"></span></span>
-                    <button class="col-filter-btn" onclick="openColFilter('dislikesReceived', this, true)">&#128269;</button>
+                    <span class="sortable" onclick="sortLeaderboard('dislikesReceived')">&#128078; <span class="sort-icon" data-col="dislikesReceived" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('dislikesReceived', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="dislikesReceived" data-table="lb" onclick="clearOneColFilter('dislikesReceived', 'lb')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('gold')">&#128176; GOLD <span class="sort-icon" data-col="gold"></span></span>
-                    <button class="col-filter-btn" onclick="openColFilter('gold', this, true)">&#128269;</button>
+                    <span class="sortable" onclick="sortLeaderboard('gold')">&#128176; GOLD <span class="sort-icon" data-col="gold" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('gold', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="gold" data-table="lb" onclick="clearOneColFilter('gold', 'lb')">&#10005;</button>
                   </div>
                 </th>
               </tr>
@@ -159,11 +194,14 @@
 
         <!-- Spaltenfilter-Dropdown -->
         <div id="lb-col-filter" class="hidden">
-          <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()" />
           <div id="lbf-range-wrap">
-            <input type="number" id="lbf-from" placeholder="Von" oninput="applyColFilter()" />
-            <input type="number" id="lbf-to"   placeholder="Bis" oninput="applyColFilter()" />
+            <input type="number" id="lbf-from" placeholder="Von" oninput="applyColFilter()"
+                   onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
+            <input type="number" id="lbf-to"   placeholder="Bis" oninput="applyColFilter()"
+                   onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
           </div>
+          <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()"
+                 onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
           <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
         </div>
       </div>
@@ -177,6 +215,10 @@
             <div class="profile-joined" id="profile-joined"></div>
           </div>
           <div class="profile-stats">
+            <div class="stat-cell rank-cell">
+              <div class="stat-val rank" id="stat-rank">–</div>
+              <div class="stat-key"># RANK</div>
+            </div>
             <div class="stat-cell">
               <div class="stat-val" id="stat-posts">–</div>
               <div class="stat-key">BEITRÄGE</div>

@@ -1,11 +1,21 @@
-let currentUser      = null;
-let refreshInterval  = null;
+let currentUser       = null;
+let refreshInterval   = null;
 let lastBoardSnapshot = null;
-let boardView        = 'cards';
-let lbData           = [];
-let lbSort           = { col: 'likesReceived', dir: 'desc' };
-let lbFilters        = {};
-let activeFilterCol  = null;
+let boardView         = 'cards';
+
+// Leaderboard state
+let lbData    = [];
+let lbSort    = { col: 'gold', dir: 'desc' };
+let lbFilters = {};
+
+// Posts table state
+let ptData    = [];
+let ptSort    = { col: 'created_at', dir: 'desc' };
+let ptFilters = {};
+
+// Shared filter dropdown state
+let activeFilterCol   = null;
+let activeFilterTable = null; // 'lb' | 'pt'
 
 // ── API ──────────────────────────────────────────
 async function api(method, url, body) {
@@ -155,7 +165,6 @@ async function submitPost() {
     feedback.classList.add('success');
     document.getElementById('post-title').value = '';
     document.getElementById('post-body').value  = '';
-    // Char-Counter zurücksetzen
     document.querySelectorAll('#view-board .field-wrap').forEach(wrap => {
       const input = wrap.querySelector('input, textarea');
       if (input) updateCharCount(input);
@@ -194,14 +203,61 @@ function setBoardView(view) {
   document.getElementById('btn-table').classList.toggle('active', view === 'table');
 }
 
+function sortPostsTable(col) {
+  if (ptSort.col === col) {
+    ptSort.dir = ptSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    ptSort.col = col;
+    ptSort.dir = (col === 'title' || col === 'author') ? 'asc' : 'desc';
+  }
+  renderPostsTable();
+}
+
 function renderPostsTable(posts) {
+  if (Array.isArray(posts)) ptData = posts;
   const tbody = document.getElementById('posts-table-body');
   if (!tbody) return;
-  if (!Array.isArray(posts) || posts.length === 0) {
+
+  // Sort icons
+  document.querySelectorAll('.sort-icon[data-table="pt"]').forEach(el => {
+    el.className = 'sort-icon' + (el.dataset.col === ptSort.col ? ` ${ptSort.dir}` : '');
+  });
+
+  // Filter
+  let data = [...ptData].filter(p => {
+    for (const [col, f] of Object.entries(ptFilters)) {
+      let val;
+      if (col === 'created_at') {
+        val = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
+      } else {
+        val = p[col];
+      }
+      if (f.text && !String(val ?? '').toLowerCase().includes(f.text)) return false;
+      if (f.from !== undefined && Number(val) < f.from) return false;
+      if (f.to   !== undefined && Number(val) > f.to)   return false;
+    }
+    return true;
+  });
+
+  // Sort
+  data.sort((a, b) => {
+    const dir = ptSort.dir === 'asc' ? 1 : -1;
+    if (ptSort.col === 'title' || ptSort.col === 'author') {
+      return String(a[ptSort.col] ?? '').localeCompare(String(b[ptSort.col] ?? '')) * dir;
+    }
+    if (ptSort.col === 'created_at') {
+      return (new Date(a.created_at || a.createdAt) - new Date(b.created_at || b.createdAt)) * dir;
+    }
+    return ((a[ptSort.col] ?? 0) - (b[ptSort.col] ?? 0)) * dir;
+  });
+
+  if (!data.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="no-posts">Noch keine Beiträge vorhanden.</td></tr>';
+    updateColClearBtns('pt');
     return;
   }
-  tbody.innerHTML = posts.map(p => {
+
+  tbody.innerHTML = data.map(p => {
     const date = new Date(p.created_at || p.createdAt).toLocaleString('de-DE');
     return `<tr>
       <td><a href="#profile/${encodeURIComponent(p.author)}" class="author-link" onclick="event.stopPropagation()">${escapeHtml(p.title)}</a></td>
@@ -211,6 +267,8 @@ function renderPostsTable(posts) {
       <td class="col-dislikes col-num">${p.downvotes}</td>
     </tr>`;
   }).join('');
+
+  updateColClearBtns('pt');
 }
 
 // ── Votes ─────────────────────────────────────────
@@ -255,77 +313,121 @@ function sortLeaderboard(col) {
   renderLeaderboard();
 }
 
-function openColFilter(col, btn, isNumeric) {
+// ── Shared Column Filter ───────────────────────────
+function openColFilter(col, btn, isNumeric, table) {
+  if (!table) table = 'lb';
   const dropdown = document.getElementById('lb-col-filter');
 
-  if (activeFilterCol === col && !dropdown.classList.contains('hidden')) {
-    dropdown.classList.add('hidden');
-    activeFilterCol = null;
+  if (activeFilterCol === col && activeFilterTable === table && !dropdown.classList.contains('hidden')) {
+    closeColFilter();
     return;
   }
 
-  activeFilterCol = col;
-  dropdown.dataset.col = col;
+  activeFilterCol   = col;
+  activeFilterTable = table;
+  dropdown.dataset.col   = col;
+  dropdown.dataset.table = table;
 
-  document.getElementById('lbf-range-wrap').style.display = isNumeric ? 'flex' : 'none';
-  const f = lbFilters[col] || {};
+  const isNum = !!isNumeric;
+  document.getElementById('lbf-range-wrap').style.display = isNum ? 'flex' : 'none';
+
+  const filters = table === 'lb' ? lbFilters : ptFilters;
+  const f = filters[col] || {};
   document.getElementById('lbf-text').value = f.text || '';
   document.getElementById('lbf-from').value = f.from ?? '';
   document.getElementById('lbf-to').value   = f.to   ?? '';
 
+  // Position upward from button
   const rect = btn.getBoundingClientRect();
-  dropdown.style.top  = (rect.bottom + 4) + 'px';
-  dropdown.style.left = Math.max(0, rect.left - 100) + 'px';
+  dropdown.style.top    = 'auto';
+  dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  dropdown.style.left   = Math.max(4, rect.left - 80) + 'px';
   dropdown.classList.remove('hidden');
 
-  // Aktive Filter-Buttons highlighten
   document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (f.text || f.from !== undefined || f.to !== undefined) btn.classList.add('active');
 
-  setTimeout(() => document.getElementById('lbf-text').focus(), 50);
+  setTimeout(() => {
+    const first = isNum
+      ? document.getElementById('lbf-from')
+      : document.getElementById('lbf-text');
+    first.focus();
+  }, 50);
+}
+
+function closeColFilter() {
+  document.getElementById('lb-col-filter').classList.add('hidden');
+  document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
+  activeFilterCol   = null;
+  activeFilterTable = null;
 }
 
 function applyColFilter() {
-  const col  = document.getElementById('lb-col-filter').dataset.col;
+  const col   = document.getElementById('lb-col-filter').dataset.col;
+  const table = document.getElementById('lb-col-filter').dataset.table || 'lb';
   if (!col) return;
+
   const text = document.getElementById('lbf-text').value.trim().toLowerCase();
   const from = document.getElementById('lbf-from').value;
   const to   = document.getElementById('lbf-to').value;
 
+  const filters = table === 'lb' ? lbFilters : ptFilters;
+
   if (!text && from === '' && to === '') {
-    delete lbFilters[col];
+    delete filters[col];
   } else {
-    lbFilters[col] = {
+    filters[col] = {
       text: text || '',
       from: from !== '' ? parseFloat(from) : undefined,
       to:   to   !== '' ? parseFloat(to)   : undefined
     };
   }
-  renderLeaderboard();
+
+  updateColClearBtns(table);
+  if (table === 'lb') renderLeaderboard();
+  else                renderPostsTable();
 }
 
 function clearColFilter() {
-  const col = document.getElementById('lb-col-filter').dataset.col;
-  if (col) delete lbFilters[col];
+  const col   = document.getElementById('lb-col-filter').dataset.col;
+  const table = document.getElementById('lb-col-filter').dataset.table || 'lb';
+  const filters = table === 'lb' ? lbFilters : ptFilters;
+  if (col) delete filters[col];
   document.getElementById('lbf-text').value = '';
   document.getElementById('lbf-from').value = '';
   document.getElementById('lbf-to').value   = '';
-  document.querySelectorAll('.col-filter-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('lb-col-filter').classList.add('hidden');
-  activeFilterCol = null;
-  renderLeaderboard();
+  closeColFilter();
+  updateColClearBtns(table);
+  if (table === 'lb') renderLeaderboard();
+  else                renderPostsTable();
+}
+
+function clearOneColFilter(col, table) {
+  if (!table) table = 'lb';
+  const filters = table === 'lb' ? lbFilters : ptFilters;
+  delete filters[col];
+  updateColClearBtns(table);
+  if (table === 'lb') renderLeaderboard();
+  else                renderPostsTable();
+}
+
+function updateColClearBtns(table) {
+  const filters = table === 'lb' ? lbFilters : ptFilters;
+  document.querySelectorAll(`.col-clear-btn[data-table="${table}"]`).forEach(btn => {
+    const col = btn.dataset.col;
+    btn.classList.toggle('hidden', !filters[col]);
+  });
 }
 
 function renderLeaderboard() {
   const tbody = document.getElementById('leaderboard-body');
 
-  // Sort-Icons
-  document.querySelectorAll('.sort-icon').forEach(el => {
+  // Sort icons
+  document.querySelectorAll('.sort-icon[data-table="lb"]').forEach(el => {
     el.className = 'sort-icon' + (el.dataset.col === lbSort.col ? ` ${lbSort.dir}` : '');
   });
 
-  // Filtern
+  // Filter
   let data = [...lbData].filter(u => {
     for (const [col, f] of Object.entries(lbFilters)) {
       const val = u[col];
@@ -336,7 +438,7 @@ function renderLeaderboard() {
     return true;
   });
 
-  // Sortieren
+  // Sort
   data.sort((a, b) => {
     const dir = lbSort.dir === 'asc' ? 1 : -1;
     if (lbSort.col === 'username') return a.username.localeCompare(b.username) * dir;
@@ -345,6 +447,7 @@ function renderLeaderboard() {
 
   if (!data.length) {
     tbody.innerHTML = '<tr><td colspan="6" class="no-posts">Keine User gefunden.</td></tr>';
+    updateColClearBtns('lb');
     return;
   }
 
@@ -358,6 +461,8 @@ function renderLeaderboard() {
       <td class="col-gold">${u.gold}</td>
     </tr>
   `).join('');
+
+  updateColClearBtns('lb');
 }
 
 // ── Profil ────────────────────────────────────────
@@ -372,8 +477,10 @@ async function loadProfile(username) {
     document.getElementById('profile-avatar').textContent   = '?';
     document.getElementById('profile-username').textContent = 'User nicht gefunden';
     document.getElementById('profile-joined').textContent   = '';
-    ['stat-posts','stat-likes','stat-dislikes','stat-gold'].forEach(id =>
-      document.getElementById(id).textContent = '–');
+    ['stat-posts','stat-likes','stat-dislikes','stat-gold','stat-rank'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '–';
+    });
     document.getElementById('profile-posts-container').innerHTML = '';
     return;
   }
@@ -391,6 +498,8 @@ function updateProfileStats(profile) {
   document.getElementById('stat-likes').textContent    = profile.likesReceived    ?? '–';
   document.getElementById('stat-dislikes').textContent = profile.dislikesReceived ?? '–';
   document.getElementById('stat-gold').textContent     = profile.gold             ?? '–';
+  const rankEl = document.getElementById('stat-rank');
+  if (rankEl) rankEl.textContent = profile.rank != null ? `#${profile.rank}` : '–';
 }
 
 // ── Posts rendern ─────────────────────────────────
@@ -459,7 +568,7 @@ function handleRoute() {
   const hash = window.location.hash || '#board';
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   stopBoardRefresh();
-  document.getElementById('lb-col-filter')?.classList.add('hidden');
+  closeColFilter();
 
   if (hash === '#board' || hash === '#' || hash === '') {
     document.querySelector('[href="#board"]').classList.add('active');
@@ -486,13 +595,13 @@ function showView(name) {
 
 window.addEventListener('hashchange', handleRoute);
 
-// Dropdown schließen bei Klick außerhalb
 document.addEventListener('click', e => {
   const dropdown = document.getElementById('lb-col-filter');
   if (dropdown && !dropdown.classList.contains('hidden') &&
-      !dropdown.contains(e.target) && !e.target.classList.contains('col-filter-btn')) {
-    dropdown.classList.add('hidden');
-    activeFilterCol = null;
+      !dropdown.contains(e.target) &&
+      !e.target.classList.contains('col-filter-btn') &&
+      !e.target.classList.contains('col-clear-btn')) {
+    closeColFilter();
   }
 });
 
