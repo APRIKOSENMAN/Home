@@ -80,6 +80,34 @@ async function initDb() {
       spun_at     TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_last_claimed TIMESTAMPTZ DEFAULT NULL;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS unplaced_buildings (
+      username TEXT NOT NULL,
+      type     TEXT NOT NULL,
+      quantity INT  NOT NULL DEFAULT 0,
+      PRIMARY KEY (username, type)
+    );
+    CREATE TABLE IF NOT EXISTS city_buildings (
+      id       SERIAL PRIMARY KEY,
+      username TEXT NOT NULL,
+      type     TEXT NOT NULL,
+      x        INT  NOT NULL,
+      y        INT  NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS building_jobs (
+      id          SERIAL PRIMARY KEY,
+      building_id INT  NOT NULL REFERENCES city_buildings(id) ON DELETE CASCADE,
+      started_at  TIMESTAMPTZ DEFAULT NOW(),
+      completed   BOOL DEFAULT FALSE
+    );
+    CREATE TABLE IF NOT EXISTS storage_items (
+      username  TEXT NOT NULL,
+      item_type TEXT NOT NULL,
+      quantity  INT  NOT NULL DEFAULT 0,
+      PRIMARY KEY (username, item_type)
+    );
+  `);
 }
 
 app.use(express.json());
@@ -295,11 +323,19 @@ app.get('/api/leaderboard', requireAuth, async (req, res) => {
       u.gold,
       COUNT(DISTINCT p.id)::int                         AS "postCount",
       COUNT(CASE WHEN v.vote = 'up'   THEN 1 END)::int AS "likesReceived",
-      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived"
+      COUNT(CASE WHEN v.vote = 'down' THEN 1 END)::int AS "dislikesReceived",
+      COALESCE(sl."spinCount", 0)::int                  AS "spinCount",
+      COALESCE(sl."bestReward", 0)::int                 AS "bestReward"
     FROM users u
     LEFT JOIN posts  p ON p.author  = u.username
     LEFT JOIN votes  v ON v.post_id = p.id
-    GROUP BY u.username, u.gold
+    LEFT JOIN (
+      SELECT username,
+             COUNT(*)::int  AS "spinCount",
+             MAX(reward)::int AS "bestReward"
+      FROM spin_log GROUP BY username
+    ) sl ON sl.username = u.username
+    GROUP BY u.username, u.gold, sl."spinCount", sl."bestReward"
     ORDER BY "likesReceived" DESC
   `);
   res.json(rows);
@@ -361,6 +397,158 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
   );
   const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
   res.json({ segmentIndex: idx, reward, gold: after[0].gold });
+});
+
+// ── Daily ─────────────────────────────────────────
+
+app.get('/api/daily', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT daily_last_claimed, gold FROM users WHERE username = $1', [req.session.username]
+  );
+  const last = rows[0].daily_last_claimed ? new Date(rows[0].daily_last_claimed).getTime() : 0;
+  const DAY  = 24 * 60 * 60 * 1000;
+  const diff = Date.now() - last;
+  res.json({ claimable: diff >= DAY, secondsUntilNext: diff >= DAY ? 0 : Math.ceil((DAY - diff) / 1000), gold: rows[0].gold });
+});
+
+app.post('/api/daily/claim', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows } = await pool.query('SELECT daily_last_claimed FROM users WHERE username = $1', [username]);
+  const last = rows[0].daily_last_claimed ? new Date(rows[0].daily_last_claimed).getTime() : 0;
+  if (Date.now() - last < 24 * 60 * 60 * 1000) return res.status(400).json({ error: 'Noch nicht verfügbar' });
+  await pool.query('UPDATE users SET gold = gold + 100, daily_last_claimed = NOW() WHERE username = $1', [username]);
+  const { rows: u } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
+  res.json({ ok: true, gold: u[0].gold });
+});
+
+// ── Factory ───────────────────────────────────────
+
+const BUILDING_DEFS_SRV = {
+  goldbarren_giesserei: { width: 2, height: 3 }
+};
+const RECIPE_DEFS_SRV = {
+  goldbarren_giesserei: { goldCost: 10, durationMs: 10 * 60 * 1000, outputItem: 'goldbarren', outputQty: 1 }
+};
+
+app.get('/api/factory', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows: ex1 } = await pool.query('SELECT 1 FROM unplaced_buildings WHERE username=$1 LIMIT 1', [username]);
+  const { rows: ex2 } = await pool.query('SELECT 1 FROM city_buildings     WHERE username=$1 LIMIT 1', [username]);
+  if (!ex1.length && !ex2.length) {
+    await pool.query(
+      'INSERT INTO unplaced_buildings (username,type,quantity) VALUES ($1,$2,5) ON CONFLICT DO NOTHING',
+      [username, 'goldbarren_giesserei']
+    );
+  }
+  const { rows: unplaced }  = await pool.query('SELECT type, quantity FROM unplaced_buildings WHERE username=$1 AND quantity>0', [username]);
+  const { rows: buildings } = await pool.query(`
+    SELECT cb.id, cb.type, cb.x, cb.y,
+           bj.id AS "jobId", bj.started_at AS "jobStarted", bj.completed AS "jobCompleted"
+    FROM city_buildings cb
+    LEFT JOIN building_jobs bj ON bj.building_id = cb.id
+    WHERE cb.username=$1 ORDER BY cb.id`, [username]);
+  const { rows: items } = await pool.query(
+    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]);
+  res.json({ unplaced, buildings, items });
+});
+
+app.post('/api/factory/place', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { type, x, y } = req.body;
+  const def = BUILDING_DEFS_SRV[type];
+  if (!def) return res.status(400).json({ error: 'Unbekanntes Gebäude' });
+  const { rows: u } = await pool.query('SELECT quantity FROM unplaced_buildings WHERE username=$1 AND type=$2', [username, type]);
+  if (!u[0] || u[0].quantity < 1) return res.status(400).json({ error: 'Nicht im Storage' });
+  if (x < 0 || y < 0 || x + def.width > 20 || y + def.height > 20)
+    return res.status(400).json({ error: 'Außerhalb des Grids' });
+  const { rows: placed } = await pool.query('SELECT type, x, y FROM city_buildings WHERE username=$1', [username]);
+  for (const b of placed) {
+    const bd = BUILDING_DEFS_SRV[b.type];
+    if (x < b.x + bd.width && x + def.width > b.x && y < b.y + bd.height && y + def.height > b.y)
+      return res.status(400).json({ error: 'Überlappung' });
+  }
+  const { rows: nb } = await pool.query(
+    'INSERT INTO city_buildings (username,type,x,y) VALUES ($1,$2,$3,$4) RETURNING id', [username, type, x, y]);
+  await pool.query('UPDATE unplaced_buildings SET quantity=quantity-1 WHERE username=$1 AND type=$2', [username, type]);
+  res.json({ ok: true, id: nb[0].id });
+});
+
+app.delete('/api/factory/building/:id', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const id = parseInt(req.params.id);
+  const { rows } = await pool.query('SELECT type FROM city_buildings WHERE id=$1 AND username=$2', [id, username]);
+  if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+  const { rows: job } = await pool.query('SELECT id FROM building_jobs WHERE building_id=$1 AND completed=FALSE', [id]);
+  if (job.length) return res.status(400).json({ error: 'Rezept läuft noch' });
+  await pool.query('DELETE FROM city_buildings WHERE id=$1', [id]);
+  await pool.query(
+    'INSERT INTO unplaced_buildings (username,type,quantity) VALUES ($1,$2,1) ON CONFLICT (username,type) DO UPDATE SET quantity=unplaced_buildings.quantity+1',
+    [username, rows[0].type]
+  );
+  res.json({ ok: true });
+});
+
+app.get('/api/factory/building/:id', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const id = parseInt(req.params.id);
+  const { rows } = await pool.query(`
+    SELECT cb.id, cb.type, bj.id AS "jobId", bj.started_at AS "jobStarted", bj.completed AS "jobCompleted", u.gold
+    FROM city_buildings cb
+    JOIN users u ON u.username=cb.username
+    LEFT JOIN building_jobs bj ON bj.building_id=cb.id
+    WHERE cb.id=$1 AND cb.username=$2`, [id, username]);
+  if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+  const b = rows[0];
+  let job = null;
+  if (b.jobId) {
+    const recipe  = RECIPE_DEFS_SRV[b.type];
+    const elapsed = Date.now() - new Date(b.jobStarted).getTime();
+    if (elapsed >= recipe.durationMs && !b.jobCompleted) {
+      await pool.query('UPDATE building_jobs SET completed=TRUE WHERE id=$1', [b.jobId]);
+      b.jobCompleted = true;
+    }
+    job = { id: b.jobId, startedAt: b.jobStarted, completed: b.jobCompleted,
+            progress: Math.min(1, elapsed / recipe.durationMs),
+            remainingMs: Math.max(0, recipe.durationMs - elapsed) };
+  }
+  res.json({ id: b.id, type: b.type, job, gold: b.gold });
+});
+
+app.post('/api/factory/building/:id/start', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const id = parseInt(req.params.id);
+  const { rows } = await pool.query(
+    'SELECT cb.type, u.gold FROM city_buildings cb JOIN users u ON u.username=cb.username WHERE cb.id=$1 AND cb.username=$2',
+    [id, username]);
+  if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+  const recipe = RECIPE_DEFS_SRV[rows[0].type];
+  if (rows[0].gold < recipe.goldCost) return res.status(400).json({ error: `Nicht genug Gold (${recipe.goldCost} benötigt)` });
+  const { rows: active } = await pool.query('SELECT id FROM building_jobs WHERE building_id=$1', [id]);
+  if (active.length) return res.status(400).json({ error: 'Job läuft bereits oder Output ausstehend' });
+  await pool.query('UPDATE users SET gold=gold-$1 WHERE username=$2', [recipe.goldCost, username]);
+  await pool.query('INSERT INTO building_jobs (building_id) VALUES ($1)', [id]);
+  const { rows: u } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
+  res.json({ ok: true, gold: u[0].gold });
+});
+
+app.post('/api/factory/building/:id/collect', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const id = parseInt(req.params.id);
+  const { rows } = await pool.query('SELECT type FROM city_buildings WHERE id=$1 AND username=$2', [id, username]);
+  if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+  const recipe = RECIPE_DEFS_SRV[rows[0].type];
+  const { rows: jobs } = await pool.query('SELECT id, started_at, completed FROM building_jobs WHERE building_id=$1', [id]);
+  if (!jobs.length) return res.status(400).json({ error: 'Kein Job' });
+  const elapsed = Date.now() - new Date(jobs[0].started_at).getTime();
+  if (!jobs[0].completed && elapsed < recipe.durationMs)
+    return res.status(400).json({ error: 'Noch nicht fertig' });
+  await pool.query('DELETE FROM building_jobs WHERE building_id=$1', [id]);
+  await pool.query(
+    'INSERT INTO storage_items (username,item_type,quantity) VALUES ($1,$2,$3) ON CONFLICT (username,item_type) DO UPDATE SET quantity=storage_items.quantity+$3',
+    [username, recipe.outputItem, recipe.outputQty]
+  );
+  const { rows: items } = await pool.query('SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]);
+  res.json({ ok: true, items });
 });
 
 app.get('/api/wheel/log', requireAuth, async (req, res) => {

@@ -55,6 +55,8 @@
         <a href="#board"       class="nav-link">BOARD</a>
         <a href="#leaderboard" class="nav-link">LEADERBOARD</a>
         <a href="#wheel"       class="nav-link">WHEEL</a>
+        <a href="#factory"     class="nav-link">FACTORY</a>
+        <a href="#daily"       class="nav-link">DAILY</a>
       </nav>
       <div class="header-right">
         <div class="vol-control">
@@ -205,6 +207,20 @@
                     <button class="col-clear-btn hidden" data-col="gold" data-table="lb" onclick="clearOneColFilter('gold', 'lb')">&#10005;</button>
                   </div>
                 </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('spinCount')">&#127922; SPINS <span class="sort-icon" data-col="spinCount" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('spinCount', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="spinCount" data-table="lb" onclick="clearOneColFilter('spinCount', 'lb')">&#10005;</button>
+                  </div>
+                </th>
+                <th>
+                  <div class="th-inner">
+                    <span class="sortable" onclick="sortLeaderboard('bestReward')">&#127882; BEST <span class="sort-icon" data-col="bestReward" data-table="lb"></span></span>
+                    <button class="col-filter-btn" onclick="openColFilter('bestReward', this, true, 'lb')">&#128269;</button>
+                    <button class="col-clear-btn hidden" data-col="bestReward" data-table="lb" onclick="clearOneColFilter('bestReward', 'lb')">&#10005;</button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody id="leaderboard-body"></tbody>
@@ -281,6 +297,50 @@
         </div>
         <div class="panel-label">BEITRÄGE</div>
         <div id="profile-posts-container"></div>
+      </div>
+
+      <!-- Factory -->
+      <div id="view-factory" class="view hidden">
+        <div class="factory-layout">
+          <aside class="factory-sidebar">
+            <div class="panel">
+              <div class="panel-header">STORAGE – GEBÄUDE</div>
+              <div id="storage-buildings"></div>
+            </div>
+            <div class="panel" style="margin-top:.5rem">
+              <div class="panel-header">STORAGE – ITEMS</div>
+              <div id="storage-items"></div>
+            </div>
+          </aside>
+          <div class="factory-main-area">
+            <div class="panel">
+              <div class="panel-header">CITY</div>
+              <div class="city-grid-scroll">
+                <div class="city-grid" id="city-grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="building-panel" class="building-panel hidden">
+          <div id="building-panel-content"></div>
+          <button class="bp-close-btn" onclick="closeBuildingPanel()">&#10005; Schließen</button>
+        </div>
+      </div>
+
+      <!-- Daily -->
+      <div id="view-daily" class="view hidden">
+        <div class="panel daily-panel">
+          <div class="panel-header">DAILY REWARD</div>
+          <div class="daily-body">
+            <div class="daily-icon">&#127873;</div>
+            <div class="daily-info">
+              <div class="daily-title">Täglich 100 Gold einsammeln</div>
+              <div class="daily-timer" id="daily-timer"></div>
+            </div>
+            <button id="daily-claim-btn" onclick="claimDaily()" disabled>&#8987; LÄDT...</button>
+          </div>
+          <p class="error" id="daily-error" style="padding:.5rem 1rem"></p>
+        </div>
       </div>
 
     </main>
