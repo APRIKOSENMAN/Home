@@ -729,13 +729,13 @@ function buildWheelV1(seedStr) {
     if (r < 0.30) return { raw: 0,                  cat: 0 };
     if (r < 0.62) return { raw: rng() * 90 + 5,     cat: 1 };
     if (r < 0.84) return { raw: rng() * 280 + 60,   cat: 2 };
-    if (r < 0.95) return { raw: rng() * 450 + 220,  cat: 3 };
-    return               { raw: rng() * 300 + 700,  cat: 4 };
+    if (r < 0.95) return { raw: rng() * 450 + 220,   cat: 3 };
+    return               { raw: rng() * 2000 + 2000, cat: 4 };
   });
   const raw   = rawData.map(d => d.raw);
   const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 10 / ev : 1;
-  const rwd   = raw.map(r => Math.min(100, Math.max(0, Math.round(r * scale))));
+  const scale = ev > 0 ? 11 / ev : 1;
+  const rwd   = raw.map(r => Math.min(200, Math.max(0, Math.round(r * scale))));
   return p.map((prob, i) => ({ prob, reward: rwd[i], color: CAT_COLORS[rawData[i].cat] }));
 }
 
@@ -823,9 +823,11 @@ function drawWheel() {
 function wheelTargetRot(segIdx) {
   let cum = 0;
   for (let i = 0; i < segIdx; i++) cum += wheelSegs[i].prob * Math.PI * 2;
-  const mid   = cum + wheelSegs[segIdx].prob * Math.PI;
-  const base  = -mid;
-  const extra = Math.ceil((wheelRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
+  const arc    = wheelSegs[segIdx].prob * Math.PI * 2;
+  const margin = arc * 0.12;
+  const land   = cum + margin + Math.random() * (arc - 2 * margin);
+  const base   = -land;
+  const extra  = Math.ceil((wheelRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
   return base + extra * Math.PI * 2;
 }
 
@@ -954,19 +956,33 @@ function renderWheelLog(entries) {
     <div class="panel-label">SPIN VERLAUF</div>
     <div class="panel">
       <table class="spin-log-table">
-        <thead><tr><th>DATUM</th><th>SEED</th><th>REWARD</th></tr></thead>
+        <thead><tr><th>DATUM</th><th>SEED</th><th>REWARD</th><th></th></tr></thead>
         <tbody>${entries.map(e => {
           const date = new Date(e.spunAt).toLocaleString('de-DE');
-          const cls  = e.reward === 0 ? 'log-zero' : e.reward >= 80 ? 'log-jackpot' : '';
+          const cls  = e.reward === 0 ? 'log-zero' : e.reward >= 120 ? 'log-jackpot' : '';
           return `<tr>
             <td class="col-num">${date}</td>
             <td class="log-seed" data-seed="${e.seed}" data-seg="${e.segmentIdx}"
                 onmouseenter="showWheelPreview(this,event)" onmouseleave="hideWheelPreview()">${e.seed}</td>
             <td class="col-num ${cls}">${e.reward === 0 ? '— 0' : '+' + e.reward} 🪙</td>
+            <td><button class="spin-post-btn" onclick="postSpinResult('${e.seed}',${e.segmentIdx},${e.reward},this)">&#128203; Posten</button></td>
           </tr>`;
         }).join('')}</tbody>
       </table>
     </div>`;
+}
+
+async function postSpinResult(seed, segIdx, reward, btn) {
+  btn.disabled = true;
+  const title = reward === 0 ? 'Wheel Spin: 0 Gold' : `Wheel Spin: +${reward} Gold`;
+  const body  = `Wheel of Fortune Ergebnis:\n\n💰 Reward: ${reward === 0 ? '— 0 Gold' : '+' + reward + ' Gold'}\n🌱 Seed: ${seed}`;
+  const data  = await api('POST', '/api/posts', { title, body });
+  if (data.error) {
+    btn.textContent = '✗ Fehler';
+    btn.disabled = false;
+  } else {
+    btn.textContent = '✓ Gepostet';
+  }
 }
 
 function showWheelPreview(el, event) {

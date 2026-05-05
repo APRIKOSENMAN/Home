@@ -657,6 +657,16 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .log-zero    { color: var(--muted); }
 .log-jackpot { color: var(--gold); font-weight: 700; }
 
+.spin-post-btn {
+  padding: .2rem .55rem;
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--muted);
+  font-size: .72rem; font-family: var(--font); cursor: pointer;
+  white-space: nowrap; transition: all .15s;
+}
+.spin-post-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.spin-post-btn:disabled { color: var(--like); border-color: #a5d6a7; cursor: default; }
+
 #wheel-preview {
   position: fixed;
   z-index: 200;

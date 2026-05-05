@@ -30,11 +30,11 @@ function wheelSegments(seedStr) {
     if (r < 0.62) return rng() * 90 + 5;
     if (r < 0.84) return rng() * 280 + 60;
     if (r < 0.95) return rng() * 450 + 220;
-    return rng() * 300 + 700;
+    return rng() * 2000 + 2000;
   });
   const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 10 / ev : 1;
-  const rwd   = raw.map(r => Math.min(100, Math.max(0, Math.round(r * scale))));
+  const scale = ev > 0 ? 11 / ev : 1;
+  const rwd   = raw.map(r => Math.min(200, Math.max(0, Math.round(r * scale))));
   return p.map((prob, i) => ({ prob, reward: rwd[i] }));
 }
 
