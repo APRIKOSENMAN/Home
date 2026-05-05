@@ -865,6 +865,7 @@ async function loadWheel() {
   }
   document.getElementById('wheel-result').classList.add('hidden');
   document.getElementById('wheel-error').textContent = '';
+  loadWheelLog();
 }
 
 function renderWheelButtons(hasSeed) {
@@ -934,7 +935,118 @@ async function wheelSpin() {
     document.getElementById('wheel-seed-row').textContent = '';
     renderWheelButtons(false);
     setWheelBtnsDisabled(false);
+    loadWheelLog();
   });
+}
+
+// ── Wheel Log ─────────────────────────────────────
+async function loadWheelLog() {
+  const entries = await api('GET', '/api/wheel/log');
+  renderWheelLog(entries);
+}
+
+function renderWheelLog(entries) {
+  const container = document.getElementById('wheel-log-container');
+  if (!container) return;
+  if (!entries.length) { container.innerHTML = ''; return; }
+
+  container.innerHTML = `
+    <div class="panel-label">SPIN VERLAUF</div>
+    <div class="panel">
+      <table class="spin-log-table">
+        <thead><tr><th>DATUM</th><th>SEED</th><th>REWARD</th></tr></thead>
+        <tbody>${entries.map(e => {
+          const date = new Date(e.spunAt).toLocaleString('de-DE');
+          const cls  = e.reward === 0 ? 'log-zero' : e.reward >= 80 ? 'log-jackpot' : '';
+          return `<tr>
+            <td class="col-num">${date}</td>
+            <td class="log-seed" data-seed="${e.seed}" data-seg="${e.segmentIdx}"
+                onmouseenter="showWheelPreview(this,event)" onmouseleave="hideWheelPreview()">${e.seed}</td>
+            <td class="col-num ${cls}">${e.reward === 0 ? '— 0' : '+' + e.reward} 🪙</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function showWheelPreview(el, event) {
+  const preview = document.getElementById('wheel-preview');
+  const canvas  = document.getElementById('preview-canvas');
+  const segs    = buildWheelV1(el.dataset.seed);
+  const winIdx  = parseInt(el.dataset.seg);
+  drawMiniWheel(canvas, segs, winIdx);
+
+  const rect = el.getBoundingClientRect();
+  let left = rect.right + 10;
+  if (left + 148 > window.innerWidth) left = rect.left - 158;
+  preview.style.left = left + 'px';
+  preview.style.top  = Math.max(4, rect.top - 60) + 'px';
+  preview.classList.remove('hidden');
+}
+
+function hideWheelPreview() {
+  document.getElementById('wheel-preview').classList.add('hidden');
+}
+
+function drawMiniWheel(canvas, segs, winIdx) {
+  const ctx = canvas.getContext('2d');
+  const S   = canvas.width;
+  const cx  = S / 2, cy = S / 2;
+  const R   = S / 2 - 8;
+
+  // Rotate so winning segment faces pointer
+  let cum = 0;
+  for (let i = 0; i < winIdx; i++) cum += segs[i].prob * Math.PI * 2;
+  const rot = -(cum + segs[winIdx].prob * Math.PI);
+
+  ctx.clearRect(0, 0, S, S);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#162032';
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+
+  let a = -Math.PI / 2;
+  segs.forEach((seg, i) => {
+    const arc = seg.prob * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, a, a + arc);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    ctx.strokeStyle = i === winIdx ? '#fff' : 'rgba(255,255,255,0.35)';
+    ctx.lineWidth   = i === winIdx ? 2 : 1;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(a + arc / 2);
+    const fs = Math.max(7, Math.min(12, arc * R / 9));
+    ctx.font = `bold ${fs | 0}px Segoe UI,sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'right';
+    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 4, (fs | 0) / 3);
+    ctx.restore();
+
+    a += arc;
+  });
+
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d1a28';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy - R - 2);
+  ctx.lineTo(cx + 6, cy - R - 2);
+  ctx.lineTo(cx, cy - R + 9);
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
 }
 
 // ── Init ─────────────────────────────────────────

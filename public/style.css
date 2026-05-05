@@ -630,6 +630,44 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 }
 .wheel-result.zero { background: #f5f5f5; color: var(--muted); border-color: var(--border); }
 
+/* ── SPIN LOG ─────────────────────────────────── */
+.spin-log-table {
+  width: 100%; border-collapse: collapse; font-size: .85rem;
+}
+.spin-log-table thead tr { background: var(--hdr2); color: #c8d8e8; }
+.spin-log-table th {
+  padding: .5rem .9rem; text-align: left;
+  font-size: .7rem; font-weight: 700; letter-spacing: 1px;
+  border-right: 1px solid #2a3f57;
+}
+.spin-log-table th:last-child { border-right: none; }
+.spin-log-table td {
+  padding: .45rem .9rem;
+  border-bottom: 1px solid var(--border-lt);
+  border-right: 1px solid var(--border-lt);
+}
+.spin-log-table td:last-child { border-right: none; }
+.spin-log-table tbody tr:nth-child(even) { background: #f7f9fb; }
+.spin-log-table tbody tr:hover { background: #eef2f7; }
+
+.log-seed {
+  font-family: var(--mono); font-size: .75rem; color: var(--primary);
+  cursor: default;
+}
+.log-zero    { color: var(--muted); }
+.log-jackpot { color: var(--gold); font-weight: 700; }
+
+#wheel-preview {
+  position: fixed;
+  z-index: 200;
+  background: #162032;
+  border: 1px solid #2a3f57;
+  border-radius: 6px;
+  padding: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.45);
+  pointer-events: none;
+}
+
 .delete-btn {
   background: none; border: none;
   color: var(--muted); cursor: pointer;

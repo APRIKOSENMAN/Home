@@ -69,6 +69,17 @@ async function initDb() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gold         INTEGER DEFAULT 100;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wheel_seed    TEXT    DEFAULT NULL;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wheel_version INTEGER DEFAULT 1;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS spin_log (
+      id          SERIAL PRIMARY KEY,
+      username    TEXT NOT NULL,
+      seed        TEXT NOT NULL,
+      version     INTEGER NOT NULL DEFAULT 1,
+      segment_idx INTEGER NOT NULL,
+      reward      INTEGER NOT NULL,
+      spun_at     TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 }
 
 app.use(express.json());
@@ -333,11 +344,24 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
   const reward = segs[idx].reward;
 
   await pool.query(
+    'INSERT INTO spin_log (username, seed, version, segment_idx, reward) VALUES ($1, $2, $3, $4, $5)',
+    [username, u.wheel_seed, u.wheel_version, idx, reward]
+  );
+  await pool.query(
     'UPDATE users SET gold = GREATEST(0, gold - 5 + $1), wheel_seed = NULL WHERE username = $2',
     [reward, username]
   );
   const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
   res.json({ segmentIndex: idx, reward, gold: after[0].gold });
+});
+
+app.get('/api/wheel/log', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT seed, version, segment_idx AS "segmentIdx", reward, spun_at AS "spunAt"
+     FROM spin_log WHERE username = $1 ORDER BY spun_at DESC LIMIT 50`,
+    [req.session.username]
+  );
+  res.json(rows);
 });
 
 // ── Start ─────────────────────────────────────────

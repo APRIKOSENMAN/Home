@@ -231,6 +231,7 @@
             </div>
           </div>
         </div>
+        <div id="wheel-log-container"></div>
       </div>
 
       <!-- Profil -->
@@ -282,6 +283,10 @@
              onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
       <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
     </div>
+  </div>
+
+  <div id="wheel-preview" class="hidden">
+    <canvas id="preview-canvas" width="136" height="136"></canvas>
   </div>
 
   <script src="app.js"></script>
