@@ -543,6 +543,67 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 
 .own-post-note { font-size: .72rem; color: #bbb; font-style: italic; }
 
+/* ── WHEEL ────────────────────────────────────── */
+.wheel-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4rem;
+  padding: 1.4rem 1rem;
+}
+
+.wheel-stage canvas {
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 4px 24px rgba(0,0,0,.25);
+}
+
+.wheel-controls {
+  display: flex; flex-direction: column; align-items: center;
+  gap: .8rem; width: 100%;
+}
+
+.wheel-gold-row {
+  display: flex; align-items: center; gap: .6rem;
+  font-weight: 700;
+}
+.wheel-gold-label { font-size: .65rem; letter-spacing: 1px; color: var(--muted); }
+.wheel-gold-val   { font-family: var(--mono); font-size: 1.1rem; color: var(--gold); }
+
+.wheel-seed-row {
+  font-family: var(--mono); font-size: .68rem;
+  color: var(--muted); letter-spacing: .4px;
+}
+
+.wheel-btn-row {
+  display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center;
+}
+.wheel-btn-row button {
+  padding: .55rem 1.3rem;
+  background: var(--primary); color: #fff; border: none;
+  border-radius: var(--radius);
+  font-size: .78rem; font-weight: 700; letter-spacing: .6px;
+  cursor: pointer; transition: background .15s;
+}
+.wheel-btn-row button:hover:not(:disabled)  { background: var(--primary-lt); }
+.wheel-btn-row button:disabled { background: #9aabb8; cursor: not-allowed; }
+.wheel-btn-row .btn-secondary  { background: #4a5568; }
+.wheel-btn-row .btn-secondary:hover:not(:disabled) { background: #5a6578; }
+.wheel-cost {
+  font-size: .7rem; opacity: .8;
+  background: rgba(0,0,0,.15);
+  padding: .1rem .3rem; border-radius: 3px; margin-left: .3rem;
+}
+
+.wheel-result {
+  font-family: var(--mono); font-size: 1.5rem; font-weight: 700;
+  padding: .6rem 1.8rem;
+  border-radius: var(--radius);
+  background: #e8f5e9; color: var(--like); border: 1px solid #a5d6a7;
+  text-align: center; letter-spacing: 1px;
+}
+.wheel-result.zero { background: #f5f5f5; color: var(--muted); border-color: var(--border); }
+
 .delete-btn {
   background: none; border: none;
   color: var(--muted); cursor: pointer;

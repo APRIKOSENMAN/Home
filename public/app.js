@@ -624,6 +624,10 @@ function handleRoute() {
     const parts    = hash.split('/');
     const username = parts[1] ? decodeURIComponent(parts[1]) : currentUser;
     loadProfile(username);
+  } else if (hash === '#wheel') {
+    document.querySelector('[href="#wheel"]').classList.add('active');
+    showView('wheel');
+    loadWheel();
   }
 }
 
@@ -643,6 +647,238 @@ document.addEventListener('click', e => {
     closeColFilter();
   }
 });
+
+// ── Wheel ─────────────────────────────────────────
+let wheelSegs = null;
+let wheelRot  = 0;
+let wheelRaf  = null;
+
+// Seeded PRNG — must stay in sync with server wheelSegments()
+function mulberry32(seed) {
+  seed = seed >>> 0;
+  return function() {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildWheelV1(seedStr) {
+  const rng = mulberry32(parseInt(seedStr, 10));
+  const n   = Math.floor(rng() * 9) + 6;
+  const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
+  const tot = w.reduce((a, b) => a + b, 0);
+  const p   = w.map(x => x / tot);
+  const raw = Array.from({length: n}, () => {
+    const r = rng();
+    if (r < 0.30) return 0;
+    if (r < 0.62) return rng() * 90 + 5;
+    if (r < 0.84) return rng() * 280 + 60;
+    if (r < 0.95) return rng() * 450 + 220;
+    return rng() * 300 + 700;
+  });
+  const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
+  const scale = ev > 0 ? 101 / ev : 1;
+  const rwd   = raw.map(r => Math.min(1000, Math.max(0, Math.round(r * scale))));
+  // Colors — generated AFTER probs/rewards so server stays in sync
+  const hue0  = rng() * 360;
+  const colors = Array.from({length: n}, (_, i) => {
+    const h = ((hue0 + (360 / n) * i + rng() * 24 - 12) + 360) % 360;
+    const s = 58 + rng() * 28;
+    const l = 42 + rng() * 20;
+    return `hsl(${h | 0},${s | 0}%,${l | 0}%)`;
+  });
+  return p.map((prob, i) => ({ prob, reward: rwd[i], color: colors[i] }));
+}
+
+function drawWheel() {
+  const canvas = document.getElementById('wheel-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const S   = canvas.width;
+  const cx  = S / 2, cy = S / 2;
+  const R   = S / 2 - 22;
+
+  ctx.clearRect(0, 0, S, S);
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#162032';
+  ctx.fill();
+
+  if (!wheelSegs) return;
+
+  // Rotating wheel
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(wheelRot);
+
+  let a = -Math.PI / 2;
+  wheelSegs.forEach(seg => {
+    const arc = seg.prob * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, a, a + arc);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Label
+    ctx.save();
+    ctx.rotate(a + arc / 2);
+    const fs = Math.max(9, Math.min(13, arc * R / 14));
+    ctx.font = `bold ${fs}px Segoe UI,sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.7)';
+    ctx.shadowBlur  = 3;
+    ctx.textAlign   = 'right';
+    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 7, 4);
+    ctx.restore();
+
+    a += arc;
+  });
+
+  // Hub
+  ctx.beginPath();
+  ctx.arc(0, 0, 14, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d1a28';
+  ctx.fill();
+  ctx.strokeStyle = '#c8d8e8';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Fixed pointer at top
+  ctx.beginPath();
+  ctx.moveTo(cx - 11, cy - R - 3);
+  ctx.lineTo(cx + 11, cy - R - 3);
+  ctx.lineTo(cx, cy - R + 16);
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function wheelTargetRot(segIdx) {
+  let cum = 0;
+  for (let i = 0; i < segIdx; i++) cum += wheelSegs[i].prob * Math.PI * 2;
+  const mid   = cum + wheelSegs[segIdx].prob * Math.PI; // mid arc from top (local)
+  // For pointer (at -PI/2 world) to hit local angle: -PI/2 - mid + R = 0 → R = mid - PI/2...
+  // Using convention: segments start at -PI/2 rotated by wheelRot.
+  // Pointer aligns with local angle θ when θ + wheelRot = -PI/2 (mod 2PI)
+  // → wheelRot = -PI/2 - θ.  θ of segment mid = -PI/2 + mid → wheelRot = -mid
+  const base  = -mid;
+  const extra = Math.ceil((wheelRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
+  return base + extra * Math.PI * 2;
+}
+
+function animateSpin(segIdx, onDone) {
+  if (wheelRaf) cancelAnimationFrame(wheelRaf);
+  const target = wheelTargetRot(segIdx);
+  const start  = wheelRot;
+  const t0     = performance.now();
+  const dur    = 3800 + Math.random() * 1400;
+  function ease(t) { return 1 - Math.pow(1 - t, 4); }
+  function frame(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    wheelRot = start + (target - start) * ease(t);
+    drawWheel();
+    if (t < 1) { wheelRaf = requestAnimationFrame(frame); }
+    else        { wheelRot = target; drawWheel(); onDone(); }
+  }
+  wheelRaf = requestAnimationFrame(frame);
+}
+
+async function loadWheel() {
+  const data = await api('GET', '/api/wheel');
+  document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
+  if (data.seed) {
+    wheelSegs = buildWheelV1(data.seed);
+    drawWheel();
+    document.getElementById('wheel-seed-row').textContent = `SEED v${data.version} · ${data.seed}`;
+    renderWheelButtons(true);
+  } else {
+    wheelSegs = null;
+    drawWheel();
+    document.getElementById('wheel-seed-row').textContent = '';
+    renderWheelButtons(false);
+  }
+  document.getElementById('wheel-result').classList.add('hidden');
+  document.getElementById('wheel-error').textContent = '';
+}
+
+function renderWheelButtons(hasSeed) {
+  const row = document.getElementById('wheel-btn-row');
+  if (hasSeed) {
+    row.innerHTML = `
+      <button onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">50 &#128176;</span></button>
+      <button class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">50 &#128176;</span></button>`;
+  } else {
+    row.innerHTML = `
+      <button id="btn-wgen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">50 &#128176;</span></button>`;
+  }
+}
+
+function setWheelBtnsDisabled(on) {
+  document.querySelectorAll('#wheel-btn-row button').forEach(b => b.disabled = on);
+}
+
+async function wheelGenerate() {
+  setWheelBtnsDisabled(true);
+  document.getElementById('wheel-error').textContent = '';
+  const data = await api('POST', '/api/wheel/generate');
+  if (data.error) {
+    document.getElementById('wheel-error').textContent = data.error;
+    setWheelBtnsDisabled(false);
+    return;
+  }
+  wheelSegs = buildWheelV1(data.seed);
+  wheelRot  = 0;
+  drawWheel();
+  document.getElementById('wheel-gold').textContent  = `${data.gold} 💰`;
+  document.getElementById('wheel-seed-row').textContent = `SEED v${data.version} · ${data.seed}`;
+  document.getElementById('wheel-result').classList.add('hidden');
+  renderWheelButtons(true);
+}
+
+async function wheelSpin() {
+  if (!wheelSegs) return;
+  setWheelBtnsDisabled(true);
+  document.getElementById('wheel-result').classList.add('hidden');
+  document.getElementById('wheel-error').textContent = '';
+
+  const data = await api('POST', '/api/wheel/spin');
+  if (data.error) {
+    document.getElementById('wheel-error').textContent = data.error;
+    setWheelBtnsDisabled(false);
+    return;
+  }
+
+  animateSpin(data.segmentIndex, () => {
+    const el = document.getElementById('wheel-result');
+    el.classList.remove('hidden', 'zero');
+    if (data.reward === 0) {
+      el.textContent = '— 0 GOLD —';
+      el.classList.add('zero');
+    } else {
+      el.textContent = `+ ${data.reward} GOLD`;
+    }
+    document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
+    // Seed is cleared after spin — show generate buttons
+    wheelSegs = null;
+    document.getElementById('wheel-seed-row').textContent = '';
+    renderWheelButtons(false);
+    setWheelBtnsDisabled(false);
+  });
+}
 
 // ── Init ─────────────────────────────────────────
 (async () => {

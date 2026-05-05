@@ -6,6 +6,38 @@ const { Pool }       = require('pg');
 const { randomUUID } = require('crypto');
 const path           = require('path');
 
+// ── Wheel helpers ─────────────────────────────────
+function mulberry32(seed) {
+  seed = seed >>> 0;
+  return function() {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Must stay in sync with client buildWheelV1
+function wheelSegments(seedStr) {
+  const rng = mulberry32(parseInt(seedStr, 10));
+  const n   = Math.floor(rng() * 9) + 6;
+  const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
+  const tot = w.reduce((a, b) => a + b, 0);
+  const p   = w.map(x => x / tot);
+  const raw = Array.from({length: n}, () => {
+    const r = rng();
+    if (r < 0.30) return 0;
+    if (r < 0.62) return rng() * 90 + 5;
+    if (r < 0.84) return rng() * 280 + 60;
+    if (r < 0.95) return rng() * 450 + 220;
+    return rng() * 300 + 700;
+  });
+  const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
+  const scale = ev > 0 ? 101 / ev : 1;
+  const rwd   = raw.map(r => Math.min(1000, Math.max(0, Math.round(r * scale))));
+  return p.map((prob, i) => ({ prob, reward: rwd[i] }));
+}
+
 const app  = express();
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -34,8 +66,9 @@ async function initDb() {
       PRIMARY KEY (post_id, username)
     );
   `);
-  // Migration: gold-Spalte zu bestehenden Usern hinzufügen falls fehlt
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gold INTEGER DEFAULT 100;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gold         INTEGER DEFAULT 100;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wheel_seed    TEXT    DEFAULT NULL;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS wheel_version INTEGER DEFAULT 1;`);
 }
 
 app.use(express.json());
@@ -251,6 +284,60 @@ app.get('/api/leaderboard', requireAuth, async (req, res) => {
     ORDER BY "likesReceived" DESC
   `);
   res.json(rows);
+});
+
+// ── Wheel ─────────────────────────────────────────
+
+app.get('/api/wheel', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT gold, wheel_seed, wheel_version FROM users WHERE username = $1',
+    [req.session.username]
+  );
+  const u = rows[0];
+  res.json({ seed: u.wheel_seed || null, version: u.wheel_version || 1, gold: u.gold });
+});
+
+app.post('/api/wheel/generate', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
+  if (rows[0].gold < 50) return res.status(400).json({ error: 'Nicht genug Gold (50 benötigt)' });
+
+  const seed    = String(Math.floor(Math.random() * 4294967296));
+  const version = 1;
+  await pool.query(
+    'UPDATE users SET gold = gold - 50, wheel_seed = $1, wheel_version = $2 WHERE username = $3',
+    [seed, version, username]
+  );
+  const { rows: u } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
+  res.json({ seed, version, gold: u[0].gold });
+});
+
+app.post('/api/wheel/spin', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows } = await pool.query(
+    'SELECT gold, wheel_seed, wheel_version FROM users WHERE username = $1', [username]
+  );
+  const u = rows[0];
+  if (!u.wheel_seed) return res.status(400).json({ error: 'Kein Wheel generiert' });
+  if (u.gold < 50)   return res.status(400).json({ error: 'Nicht genug Gold (50 benötigt)' });
+
+  const segs = wheelSegments(u.wheel_seed);
+
+  // Weighted random pick
+  const rand = Math.random();
+  let cum = 0, idx = segs.length - 1;
+  for (let i = 0; i < segs.length; i++) {
+    cum += segs[i].prob;
+    if (rand < cum) { idx = i; break; }
+  }
+  const reward = segs[idx].reward;
+
+  await pool.query(
+    'UPDATE users SET gold = GREATEST(0, gold - 50 + $1), wheel_seed = NULL WHERE username = $2',
+    [reward, username]
+  );
+  const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
+  res.json({ segmentIndex: idx, reward, gold: after[0].gold });
 });
 
 // ── Start ─────────────────────────────────────────

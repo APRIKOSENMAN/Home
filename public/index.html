@@ -62,6 +62,7 @@
         <a href="#board"       class="nav-link">BOARD</a>
         <a href="#leaderboard" class="nav-link">LEADERBOARD</a>
         <a href="#profile"     class="nav-link">PROFIL</a>
+        <a href="#wheel"       class="nav-link">WHEEL</a>
       </nav>
       <button class="logout-btn" onclick="logout()">ABMELDEN</button>
     </header>
@@ -196,6 +197,32 @@
           </table>
         </div>
 
+      </div>
+
+      <!-- Wheel -->
+      <div id="view-wheel" class="view hidden">
+        <div class="panel wheel-panel">
+          <div class="panel-header">WHEEL OF FORTUNE</div>
+          <div class="wheel-body">
+            <div class="wheel-stage">
+              <canvas id="wheel-canvas" width="320" height="320"></canvas>
+            </div>
+            <div class="wheel-controls">
+              <div class="wheel-gold-row">
+                <span class="wheel-gold-label">DEIN GOLD</span>
+                <span class="wheel-gold-val" id="wheel-gold">–</span>
+              </div>
+              <div class="wheel-seed-row" id="wheel-seed-row"></div>
+              <div class="wheel-btn-row" id="wheel-btn-row">
+                <button id="btn-wgen" onclick="wheelGenerate()">
+                  &#9889; GENERATE <span class="wheel-cost">50 &#128176;</span>
+                </button>
+              </div>
+              <div class="wheel-result hidden" id="wheel-result"></div>
+              <p class="error" id="wheel-error"></p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Profil -->
