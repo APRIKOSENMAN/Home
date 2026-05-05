@@ -13,9 +13,19 @@ let ptData    = [];
 let ptSort    = { col: 'created_at', dir: 'desc' };
 let ptFilters = {};
 
+// Spin log state
+let slData    = [];
+let slSort    = { col: 'spunAt', dir: 'desc' };
+let slFilters = {};
+
 // Shared filter dropdown state
 let activeFilterCol   = null;
-let activeFilterTable = null; // 'lb' | 'pt'
+let activeFilterTable = null; // 'lb' | 'pt' | 'sl'
+
+// Post modal state
+let postedSeeds   = new Set();
+let lastPostTime  = 0;
+let modalSeedData = null;
 
 // ── API ──────────────────────────────────────────
 async function api(method, url, body) {
@@ -138,6 +148,8 @@ async function logout() {
 // ── App ──────────────────────────────────────────
 function showApp(username) {
   currentUser = username;
+  const el = document.getElementById('nav-username');
+  if (el) el.textContent = username.toUpperCase();
   document.getElementById('auth-section').classList.add('hidden');
   document.getElementById('app-section').classList.remove('hidden');
   if (!window.location.hash || window.location.hash === '#') {
@@ -145,6 +157,10 @@ function showApp(username) {
   } else {
     handleRoute();
   }
+}
+
+function toggleUserMenu() {
+  document.getElementById('sub-header').classList.toggle('hidden');
 }
 
 // ── Board ─────────────────────────────────────────
@@ -333,7 +349,7 @@ function openColFilter(col, btn, isNumeric, table) {
   const isNum = !!isNumeric;
   document.getElementById('lbf-range-wrap').style.display = isNum ? 'flex' : 'none';
 
-  const filters = table === 'lb' ? lbFilters : ptFilters;
+  const filters = table === 'lb' ? lbFilters : table === 'sl' ? slFilters : ptFilters;
   const f = filters[col] || {};
   document.getElementById('lbf-text').value = f.text || '';
   document.getElementById('lbf-from').value = f.from ?? '';
@@ -373,7 +389,7 @@ function applyColFilter() {
   const from = document.getElementById('lbf-from').value;
   const to   = document.getElementById('lbf-to').value;
 
-  const filters = table === 'lb' ? lbFilters : ptFilters;
+  const filters = table === 'lb' ? lbFilters : table === 'sl' ? slFilters : ptFilters;
 
   if (!text && from === '' && to === '') {
     delete filters[col];
@@ -387,13 +403,14 @@ function applyColFilter() {
 
   updateColClearBtns(table);
   if (table === 'lb') renderLeaderboard();
+  else if (table === 'sl') renderWheelLog();
   else                renderPostsTable();
 }
 
 function clearColFilter() {
   const col   = document.getElementById('lb-col-filter').dataset.col;
   const table = document.getElementById('lb-col-filter').dataset.table || 'lb';
-  const filters = table === 'lb' ? lbFilters : ptFilters;
+  const filters = table === 'lb' ? lbFilters : table === 'sl' ? slFilters : ptFilters;
   if (col) delete filters[col];
   document.getElementById('lbf-text').value = '';
   document.getElementById('lbf-from').value = '';
@@ -401,28 +418,31 @@ function clearColFilter() {
   closeColFilter();
   updateColClearBtns(table);
   if (table === 'lb') renderLeaderboard();
+  else if (table === 'sl') renderWheelLog();
   else                renderPostsTable();
 }
 
 function clearOneColFilter(col, table) {
   if (!table) table = 'lb';
-  const filters = table === 'lb' ? lbFilters : ptFilters;
+  const filters = table === 'lb' ? lbFilters : table === 'sl' ? slFilters : ptFilters;
   delete filters[col];
-  // Also reset sort if this column is currently active
   if (table === 'lb') {
     const effectiveCol = col === 'rank' ? 'gold' : col;
     if (lbSort.col === effectiveCol) lbSort = { col: 'gold', dir: 'desc' };
+  } else if (table === 'sl') {
+    if (slSort.col === col) slSort = { col: 'spunAt', dir: 'desc' };
   } else {
     if (ptSort.col === col) ptSort = { col: 'created_at', dir: 'desc' };
   }
   updateColClearBtns(table);
   if (table === 'lb') renderLeaderboard();
+  else if (table === 'sl') renderWheelLog();
   else                renderPostsTable();
 }
 
 function updateColClearBtns(table) {
-  const filters = table === 'lb' ? lbFilters : ptFilters;
-  const sort    = table === 'lb' ? lbSort    : ptSort;
+  const filters = table === 'lb' ? lbFilters : table === 'sl' ? slFilters : ptFilters;
+  const sort    = table === 'lb' ? lbSort    : table === 'sl' ? slSort    : ptSort;
   document.querySelectorAll(`.col-clear-btn[data-table="${table}"]`).forEach(btn => {
     const col         = btn.dataset.col;
     const effectiveCol = (table === 'lb' && col === 'rank') ? 'gold' : col;
@@ -534,6 +554,10 @@ function updateProfileStats(profile) {
   document.getElementById('stat-gold').textContent     = profile.gold             ?? '–';
   const rankEl = document.getElementById('stat-rank');
   if (rankEl) rankEl.textContent = profile.rank != null ? `#${profile.rank}` : '–';
+  const spinsEl = document.getElementById('stat-spins');
+  if (spinsEl) spinsEl.textContent = profile.spinCount ?? '–';
+  const bestEl = document.getElementById('stat-best');
+  if (bestEl) bestEl.textContent = profile.bestReward != null ? `+${profile.bestReward}` : '–';
 }
 
 // ── Posts rendern ─────────────────────────────────
@@ -608,6 +632,7 @@ function handleRoute() {
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   stopBoardRefresh();
   closeColFilter();
+  document.getElementById('sub-header')?.classList.add('hidden');
 
   if (hash === '#board' || hash === '#' || hash === '') {
     document.querySelector('[href="#board"]').classList.add('active');
@@ -639,6 +664,7 @@ function showView(name) {
 window.addEventListener('hashchange', handleRoute);
 
 document.addEventListener('click', e => {
+  // Close filter dropdown
   const dropdown = document.getElementById('lb-col-filter');
   if (dropdown && !dropdown.classList.contains('hidden') &&
       !dropdown.contains(e.target) &&
@@ -646,6 +672,26 @@ document.addEventListener('click', e => {
       !e.target.classList.contains('col-clear-btn')) {
     closeColFilter();
   }
+  // Close sub-header when clicking outside header area
+  const sub = document.getElementById('sub-header');
+  if (sub && !sub.classList.contains('hidden')) {
+    const hdr = document.querySelector('header');
+    if (hdr && !hdr.contains(e.target) && !sub.contains(e.target)) {
+      sub.classList.add('hidden');
+    }
+  }
+  // Close modal on overlay click
+  if (e.target.id === 'post-modal') closePostModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape') { closePostModal(); return; }
+  if (e.code !== 'Space') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  e.preventDefault();
+  if (wheelRaf !== null) { speedUpSpin(); return; }
+  const focused = document.activeElement;
+  if (focused && focused.closest && focused.closest('#wheel-btn-row')) focused.click();
 });
 
 // ── Audio ─────────────────────────────────────────
@@ -701,9 +747,10 @@ function playWinSound(reward) {
 }
 
 // ── Wheel ─────────────────────────────────────────
-let wheelSegs = null;
-let wheelRot  = 0;
-let wheelRaf  = null;
+let wheelSegs     = null;
+let wheelRot      = 0;
+let wheelRaf      = null;
+let wheelFastFrom = null;
 
 // Seeded PRNG — must stay in sync with server wheelSegments()
 function mulberry32(seed) {
@@ -831,22 +878,29 @@ function wheelTargetRot(segIdx) {
   return base + extra * Math.PI * 2;
 }
 
+function speedUpSpin() {
+  if (wheelRaf && wheelFastFrom === null) wheelFastFrom = performance.now();
+}
+
 function animateSpin(segIdx, onDone) {
   if (wheelRaf) cancelAnimationFrame(wheelRaf);
+  wheelFastFrom = null;
   const target = wheelTargetRot(segIdx);
   const start  = wheelRot;
   const t0     = performance.now();
   const dur    = 4500 + Math.random() * 2500;
-  function ease(t) { return 1 - Math.pow(1 - t, 6); }
-  let lastSeg  = wheelCurrentSeg(wheelRot);
+  function ease(p) { return 1 - Math.pow(1 - p, 6); }
+  let lastSeg = wheelCurrentSeg(wheelRot);
   function frame(now) {
-    const t = Math.min((now - t0) / dur, 1);
+    let elapsed = now - t0;
+    if (wheelFastFrom !== null) elapsed = (wheelFastFrom - t0) + (now - wheelFastFrom) * 2;
+    const t = Math.min(elapsed / dur, 1);
     wheelRot = start + (target - start) * ease(t);
     const curSeg = wheelCurrentSeg(wheelRot);
     if (curSeg !== lastSeg) { lastSeg = curSeg; playTick(); }
     drawWheel();
-    if (t < 1) { wheelRaf = requestAnimationFrame(frame); }
-    else        { wheelRot = target; drawWheel(); onDone(); }
+    if (t >= 1 || t > 0.82) { wheelRot = target; drawWheel(); wheelRaf = null; onDone(); }
+    else                     { wheelRaf = requestAnimationFrame(frame); }
   }
   wheelRaf = requestAnimationFrame(frame);
 }
@@ -874,12 +928,14 @@ function renderWheelButtons(hasSeed) {
   const row = document.getElementById('wheel-btn-row');
   if (hasSeed) {
     row.innerHTML = `
-      <button onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">5 &#128176;</span></button>
+      <button id="wbtn-spin" onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">5 &#128176;</span></button>
       <span class="wheel-or">OR</span>
-      <button class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+      <button id="wbtn-regen" class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+    setTimeout(() => document.getElementById('wbtn-spin')?.focus(), 50);
   } else {
     row.innerHTML = `
-      <button id="btn-wgen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+      <button id="wbtn-gen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+    setTimeout(() => document.getElementById('wbtn-gen')?.focus(), 50);
   }
 }
 
@@ -944,45 +1000,148 @@ async function wheelSpin() {
 // ── Wheel Log ─────────────────────────────────────
 async function loadWheelLog() {
   const entries = await api('GET', '/api/wheel/log');
-  renderWheelLog(entries);
+  slData = entries;
+  renderWheelLog();
+}
+
+function sortSpinLog(col) {
+  if (slSort.col === col) {
+    slSort.dir = slSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    slSort.col = col;
+    slSort.dir = col === 'seed' ? 'asc' : 'desc';
+  }
+  renderWheelLog();
 }
 
 function renderWheelLog(entries) {
+  if (Array.isArray(entries)) slData = entries;
   const container = document.getElementById('wheel-log-container');
   if (!container) return;
-  if (!entries.length) { container.innerHTML = ''; return; }
+  if (!slData.length) { container.innerHTML = ''; return; }
+
+  // Sort icons
+  const sortIconHtml = col =>
+    `<span class="sort-icon" data-col="${col}" data-table="sl"></span>`;
+
+  // Filter + sort data
+  let data = [...slData].filter(e => {
+    for (const [col, f] of Object.entries(slFilters)) {
+      let val;
+      if (col === 'spunAt') val = new Date(e.spunAt).toLocaleString('de-DE');
+      else val = e[col];
+      if (f.text && !String(val ?? '').toLowerCase().includes(f.text)) return false;
+      if (f.from !== undefined && Number(val) < f.from) return false;
+      if (f.to   !== undefined && Number(val) > f.to)   return false;
+    }
+    return true;
+  });
+  data.sort((a, b) => {
+    const dir = slSort.dir === 'asc' ? 1 : -1;
+    if (slSort.col === 'spunAt') return (new Date(a.spunAt) - new Date(b.spunAt)) * dir;
+    if (slSort.col === 'seed')   return String(a.seed).localeCompare(String(b.seed)) * dir;
+    return ((a[slSort.col] ?? 0) - (b[slSort.col] ?? 0)) * dir;
+  });
 
   container.innerHTML = `
     <div class="panel-label">SPIN VERLAUF</div>
-    <div class="panel">
+    <div class="panel" style="margin-top:130px">
       <table class="spin-log-table">
-        <thead><tr><th>DATUM</th><th>SEED</th><th>REWARD</th><th></th></tr></thead>
-        <tbody>${entries.map(e => {
-          const date = new Date(e.spunAt).toLocaleString('de-DE');
-          const cls  = e.reward === 0 ? 'log-zero' : e.reward >= 120 ? 'log-jackpot' : '';
+        <thead><tr>
+          <th><div class="th-inner">
+            <span class="sortable" onclick="sortSpinLog('spunAt')">DATUM ${sortIconHtml('spunAt')}</span>
+            <button class="col-filter-btn" onclick="openColFilter('spunAt',this,false,'sl')">&#128269;</button>
+            <button class="col-clear-btn hidden" data-col="spunAt" data-table="sl" onclick="clearOneColFilter('spunAt','sl')">&#10005;</button>
+          </div></th>
+          <th><div class="th-inner">
+            <span class="sortable" onclick="sortSpinLog('seed')">SEED ${sortIconHtml('seed')}</span>
+            <button class="col-filter-btn" onclick="openColFilter('seed',this,false,'sl')">&#128269;</button>
+            <button class="col-clear-btn hidden" data-col="seed" data-table="sl" onclick="clearOneColFilter('seed','sl')">&#10005;</button>
+          </div></th>
+          <th><div class="th-inner">
+            <span class="sortable" onclick="sortSpinLog('reward')">REWARD ${sortIconHtml('reward')}</span>
+            <button class="col-filter-btn" onclick="openColFilter('reward',this,true,'sl')">&#128269;</button>
+            <button class="col-clear-btn hidden" data-col="reward" data-table="sl" onclick="clearOneColFilter('reward','sl')">&#10005;</button>
+          </div></th>
+          <th></th>
+        </tr></thead>
+        <tbody>${data.map(e => {
+          const date    = new Date(e.spunAt).toLocaleString('de-DE');
+          const cls     = e.reward === 0 ? 'log-zero' : e.reward >= 120 ? 'log-jackpot' : '';
+          const posted  = postedSeeds.has(e.seed);
           return `<tr>
             <td class="col-num">${date}</td>
             <td class="log-seed" data-seed="${e.seed}" data-seg="${e.segmentIdx}"
                 onmouseenter="showWheelPreview(this,event)" onmouseleave="hideWheelPreview()">${e.seed}</td>
-            <td class="col-num ${cls}">${e.reward === 0 ? '— 0' : '+' + e.reward} 🪙</td>
-            <td><button class="spin-post-btn" onclick="postSpinResult('${e.seed}',${e.segmentIdx},${e.reward},this)">&#128203; Posten</button></td>
+            <td class="col-num ${cls}">${e.reward === 0 ? '— 0' : '+' + e.reward} &#127922;</td>
+            <td><button class="spin-post-btn" ${posted ? 'disabled' : ''}
+                onclick="openPostModal('${e.seed}',${e.segmentIdx},${e.reward})">
+              ${posted ? '&#10003; Gepostet' : '&#128203; Posten'}</button></td>
           </tr>`;
         }).join('')}</tbody>
       </table>
     </div>`;
+
+  // Apply sort icons now that elements exist
+  document.querySelectorAll('.sort-icon[data-table="sl"]').forEach(el => {
+    el.className = 'sort-icon' + (el.dataset.col === slSort.col ? ` ${slSort.dir}` : '');
+  });
+  updateColClearBtns('sl');
 }
 
-async function postSpinResult(seed, segIdx, reward, btn) {
-  btn.disabled = true;
-  const title = reward === 0 ? 'Wheel Spin: 0 Gold' : `Wheel Spin: +${reward} Gold`;
-  const body  = `Wheel of Fortune Ergebnis:\n\n💰 Reward: ${reward === 0 ? '— 0 Gold' : '+' + reward + ' Gold'}\n🌱 Seed: ${seed}`;
-  const data  = await api('POST', '/api/posts', { title, body });
-  if (data.error) {
-    btn.textContent = '✗ Fehler';
-    btn.disabled = false;
-  } else {
-    btn.textContent = '✓ Gepostet';
+function openPostModal(seed, segIdx, reward) {
+  if (postedSeeds.has(seed)) return;
+  modalSeedData = { seed, segIdx, reward };
+
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl  = document.getElementById('modal-body-text');
+  titleEl.value = reward === 0 ? 'Wheel Spin: 0 Gold' : `Wheel Spin: +${reward} Gold`;
+  bodyEl.value  = `Wheel of Fortune Ergebnis:\n\n\u{1F4B0} Reward: ${reward === 0 ? '— 0 Gold' : '+' + reward + ' Gold'}\n\u{1F331} Seed: ${seed}`;
+  updateCharCount(titleEl);
+  updateCharCount(bodyEl);
+  document.getElementById('modal-error').textContent = '';
+
+  const canvas = document.getElementById('modal-wheel-canvas');
+  drawMiniWheel(canvas, buildWheelV1(seed), segIdx);
+
+  document.getElementById('post-modal').classList.remove('hidden');
+  titleEl.focus();
+}
+
+function closePostModal() {
+  document.getElementById('post-modal').classList.add('hidden');
+  modalSeedData = null;
+}
+
+async function submitPostModal() {
+  if (!modalSeedData) return;
+  const { seed, reward } = modalSeedData;
+
+  if (postedSeeds.has(seed)) {
+    document.getElementById('modal-error').textContent = 'Dieser Spin wurde bereits gepostet.';
+    return;
   }
+  const now = Date.now();
+  const wait = Math.ceil((60000 - (now - lastPostTime)) / 1000);
+  if (lastPostTime > 0 && wait > 0) {
+    document.getElementById('modal-error').textContent = `Bitte noch ${wait}s warten (1-Minuten-Cooldown).`;
+    return;
+  }
+
+  const title = document.getElementById('modal-title').value.trim();
+  const body  = document.getElementById('modal-body-text').value.trim();
+  if (!title || !body) {
+    document.getElementById('modal-error').textContent = 'Titel und Inhalt erforderlich.';
+    return;
+  }
+
+  const data = await api('POST', '/api/posts', { title, body });
+  if (data.error) { document.getElementById('modal-error').textContent = data.error; return; }
+
+  lastPostTime = Date.now();
+  postedSeeds.add(seed);
+  closePostModal();
+  renderWheelLog();
 }
 
 function showWheelPreview(el, event) {

@@ -267,6 +267,12 @@ app.get('/api/profile/:username', requireAuth, async (req, res) => {
     [username]
   );
 
+  const { rows: wl } = await pool.query(
+    `SELECT COUNT(*)::int AS "spinCount", COALESCE(MAX(reward), 0)::int AS "bestReward"
+     FROM spin_log WHERE username = $1`,
+    [username]
+  );
+
   res.json({
     username,
     postCount:        s[0].postCount,
@@ -274,7 +280,9 @@ app.get('/api/profile/:username', requireAuth, async (req, res) => {
     dislikesReceived: s[0].dislikesReceived,
     gold:             u[0].gold,
     rank:             rankRow[0]?.rank ?? null,
-    createdAt:        u[0].created_at
+    createdAt:        u[0].created_at,
+    spinCount:        wl[0].spinCount,
+    bestReward:       wl[0].bestReward
   });
 });
 

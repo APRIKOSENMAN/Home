@@ -51,29 +51,35 @@
   <!-- APP -->
   <div id="app-section" class="hidden">
     <header>
-      <div class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
-        </svg>
-        <input type="text" id="search-input" placeholder="username"
-               onkeydown="handleSearch(event)" autocomplete="off" />
-      </div>
       <nav>
         <a href="#board"       class="nav-link">BOARD</a>
         <a href="#leaderboard" class="nav-link">LEADERBOARD</a>
-        <a href="#profile"     class="nav-link">PROFIL</a>
         <a href="#wheel"       class="nav-link">WHEEL</a>
       </nav>
-      <div class="vol-control">
-        <svg class="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-        </svg>
-        <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.5"
-               oninput="setVolume(this.value)" />
+      <div class="header-right">
+        <div class="vol-control">
+          <svg class="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+          <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.5"
+                 oninput="setVolume(this.value)" />
+        </div>
+        <a href="#profile" class="nav-link nav-user" id="nav-username" onclick="toggleUserMenu()">–</a>
       </div>
-      <button class="logout-btn" onclick="logout()">ABMELDEN</button>
     </header>
+    <div id="sub-header" class="hidden">
+      <div class="sub-header-inner">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Username suchen"
+                 onkeydown="handleSearch(event)" autocomplete="off" />
+        </div>
+        <button class="logout-btn" onclick="logout()">ABMELDEN</button>
+      </div>
+    </div>
 
     <main>
 
@@ -263,6 +269,14 @@
               <div class="stat-val gold" id="stat-gold">–</div>
               <div class="stat-key">&#128176; GOLD</div>
             </div>
+            <div class="stat-cell">
+              <div class="stat-val" id="stat-spins">–</div>
+              <div class="stat-key">&#127922; SPINS</div>
+            </div>
+            <div class="stat-cell gold-cell">
+              <div class="stat-val gold" id="stat-best">–</div>
+              <div class="stat-key">&#127882; BESTER SPIN</div>
+            </div>
           </div>
         </div>
         <div class="panel-label">BEITRÄGE</div>
@@ -287,6 +301,37 @@
 
   <div id="wheel-preview" class="hidden">
     <canvas id="preview-canvas" width="136" height="136"></canvas>
+  </div>
+
+  <!-- Post Modal -->
+  <div id="post-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="panel-header">BEITRAG VERFASSEN</div>
+      <div class="modal-content">
+        <div class="modal-wheel-wrap">
+          <canvas id="modal-wheel-canvas" width="200" height="200"></canvas>
+        </div>
+        <div class="modal-fields">
+          <div class="field-wrap">
+            <input type="text" id="modal-title" placeholder="Titel" maxlength="100"
+                   oninput="updateCharCount(this)" />
+            <span class="char-count">0/100</span>
+            <div class="char-bar"><div class="char-fill"></div></div>
+          </div>
+          <div class="field-wrap">
+            <textarea id="modal-body-text" placeholder="Inhalt..." maxlength="1000"
+                      oninput="updateCharCount(this)"></textarea>
+            <span class="char-count char-count-area">0/1000</span>
+            <div class="char-bar"><div class="char-fill"></div></div>
+          </div>
+          <p class="error" id="modal-error"></p>
+          <div class="modal-btn-row">
+            <button onclick="submitPostModal()">VERÖFFENTLICHEN</button>
+            <button class="btn-secondary" onclick="closePostModal()">ABBRECHEN</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
