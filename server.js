@@ -20,7 +20,7 @@ function mulberry32(seed) {
 // Must stay in sync with client buildWheelV1
 function wheelSegments(seedStr) {
   const rng = mulberry32(parseInt(seedStr, 10));
-  const n   = Math.floor(rng() * 9) + 6;
+  const n   = Math.floor(rng() * 7) + 2;
   const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
   const tot = w.reduce((a, b) => a + b, 0);
   const p   = w.map(x => x / tot);
@@ -33,8 +33,8 @@ function wheelSegments(seedStr) {
     return rng() * 300 + 700;
   });
   const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 101 / ev : 1;
-  const rwd   = raw.map(r => Math.min(1000, Math.max(0, Math.round(r * scale))));
+  const scale = ev > 0 ? 10 / ev : 1;
+  const rwd   = raw.map(r => Math.min(100, Math.max(0, Math.round(r * scale))));
   return p.map((prob, i) => ({ prob, reward: rwd[i] }));
 }
 
@@ -300,12 +300,12 @@ app.get('/api/wheel', requireAuth, async (req, res) => {
 app.post('/api/wheel/generate', requireAuth, async (req, res) => {
   const username = req.session.username;
   const { rows } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
-  if (rows[0].gold < 50) return res.status(400).json({ error: 'Nicht genug Gold (50 benötigt)' });
+  if (rows[0].gold < 5) return res.status(400).json({ error: 'Nicht genug Gold (5 benötigt)' });
 
   const seed    = String(Math.floor(Math.random() * 4294967296));
   const version = 1;
   await pool.query(
-    'UPDATE users SET gold = gold - 50, wheel_seed = $1, wheel_version = $2 WHERE username = $3',
+    'UPDATE users SET gold = gold - 5, wheel_seed = $1, wheel_version = $2 WHERE username = $3',
     [seed, version, username]
   );
   const { rows: u } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
@@ -319,7 +319,7 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
   );
   const u = rows[0];
   if (!u.wheel_seed) return res.status(400).json({ error: 'Kein Wheel generiert' });
-  if (u.gold < 50)   return res.status(400).json({ error: 'Nicht genug Gold (50 benötigt)' });
+  if (u.gold < 5)    return res.status(400).json({ error: 'Nicht genug Gold (5 benötigt)' });
 
   const segs = wheelSegments(u.wheel_seed);
 
@@ -333,7 +333,7 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
   const reward = segs[idx].reward;
 
   await pool.query(
-    'UPDATE users SET gold = GREATEST(0, gold - 50 + $1), wheel_seed = NULL WHERE username = $2',
+    'UPDATE users SET gold = GREATEST(0, gold - 5 + $1), wheel_seed = NULL WHERE username = $2',
     [reward, username]
   );
   const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);

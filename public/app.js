@@ -648,6 +648,58 @@ document.addEventListener('click', e => {
   }
 });
 
+// ── Audio ─────────────────────────────────────────
+let audioCtx   = null;
+let masterGain = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = parseFloat(document.getElementById('vol-slider')?.value ?? 0.5);
+  masterGain.connect(audioCtx.destination);
+}
+
+function setVolume(v) {
+  if (masterGain) masterGain.gain.value = parseFloat(v);
+}
+
+function _tone(freq, type, dur, vol) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  osc.connect(g);
+  g.connect(masterGain);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+}
+
+function playClick() { _tone(880, 'square', 0.07, 0.3); }
+function playTick()  { _tone(1200, 'square', 0.025, 0.15); }
+
+function playWinSound(reward) {
+  if (!audioCtx) return;
+  if (reward === 0) {
+    _tone(200, 'sawtooth', 0.4, 0.25);
+    setTimeout(() => _tone(160, 'sawtooth', 0.4, 0.25), 200);
+  } else if (reward <= 15) {
+    _tone(523, 'sine', 0.2, 0.3);
+    setTimeout(() => _tone(659, 'sine', 0.2, 0.3), 120);
+  } else if (reward <= 40) {
+    _tone(523, 'sine', 0.15, 0.3);
+    setTimeout(() => _tone(659, 'sine', 0.15, 0.3), 100);
+    setTimeout(() => _tone(784, 'sine', 0.25, 0.35), 200);
+  } else if (reward <= 75) {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => _tone(f, 'sine', 0.2, 0.3), i * 80));
+  } else {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => _tone(f, 'triangle', 0.25, 0.4), i * 70));
+  }
+}
+
 // ── Wheel ─────────────────────────────────────────
 let wheelSegs = null;
 let wheelRot  = 0;
@@ -664,32 +716,38 @@ function mulberry32(seed) {
   };
 }
 
+const CAT_COLORS = ['#9e9e9e', '#64b5f6', '#9c27b0', '#ef5350', '#ffd700'];
+
 function buildWheelV1(seedStr) {
   const rng = mulberry32(parseInt(seedStr, 10));
-  const n   = Math.floor(rng() * 9) + 6;
+  const n   = Math.floor(rng() * 7) + 2;   // 2-8 segments
   const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
   const tot = w.reduce((a, b) => a + b, 0);
   const p   = w.map(x => x / tot);
-  const raw = Array.from({length: n}, () => {
+  const rawData = Array.from({length: n}, () => {
     const r = rng();
-    if (r < 0.30) return 0;
-    if (r < 0.62) return rng() * 90 + 5;
-    if (r < 0.84) return rng() * 280 + 60;
-    if (r < 0.95) return rng() * 450 + 220;
-    return rng() * 300 + 700;
+    if (r < 0.30) return { raw: 0,                  cat: 0 };
+    if (r < 0.62) return { raw: rng() * 90 + 5,     cat: 1 };
+    if (r < 0.84) return { raw: rng() * 280 + 60,   cat: 2 };
+    if (r < 0.95) return { raw: rng() * 450 + 220,  cat: 3 };
+    return               { raw: rng() * 300 + 700,  cat: 4 };
   });
+  const raw   = rawData.map(d => d.raw);
   const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 101 / ev : 1;
-  const rwd   = raw.map(r => Math.min(1000, Math.max(0, Math.round(r * scale))));
-  // Colors — generated AFTER probs/rewards so server stays in sync
-  const hue0  = rng() * 360;
-  const colors = Array.from({length: n}, (_, i) => {
-    const h = ((hue0 + (360 / n) * i + rng() * 24 - 12) + 360) % 360;
-    const s = 58 + rng() * 28;
-    const l = 42 + rng() * 20;
-    return `hsl(${h | 0},${s | 0}%,${l | 0}%)`;
-  });
-  return p.map((prob, i) => ({ prob, reward: rwd[i], color: colors[i] }));
+  const scale = ev > 0 ? 10 / ev : 1;
+  const rwd   = raw.map(r => Math.min(100, Math.max(0, Math.round(r * scale))));
+  return p.map((prob, i) => ({ prob, reward: rwd[i], color: CAT_COLORS[rawData[i].cat] }));
+}
+
+function wheelCurrentSeg(rot) {
+  if (!wheelSegs) return 0;
+  let angle = ((-rot) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  let cum = 0;
+  for (let i = 0; i < wheelSegs.length; i++) {
+    cum += wheelSegs[i].prob * Math.PI * 2;
+    if (angle < cum) return i;
+  }
+  return wheelSegs.length - 1;
 }
 
 function drawWheel() {
@@ -698,19 +756,17 @@ function drawWheel() {
   const ctx = canvas.getContext('2d');
   const S   = canvas.width;
   const cx  = S / 2, cy = S / 2;
-  const R   = S / 2 - 22;
+  const R   = S / 2 - 26;
 
   ctx.clearRect(0, 0, S, S);
 
-  // Outer ring
   ctx.beginPath();
-  ctx.arc(cx, cy, R + 6, 0, Math.PI * 2);
+  ctx.arc(cx, cy, R + 10, 0, Math.PI * 2);
   ctx.fillStyle = '#162032';
   ctx.fill();
 
   if (!wheelSegs) return;
 
-  // Rotating wheel
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(wheelRot);
@@ -725,56 +781,49 @@ function drawWheel() {
     ctx.fillStyle = seg.color;
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Label
     ctx.save();
     ctx.rotate(a + arc / 2);
-    const fs = Math.max(9, Math.min(13, arc * R / 14));
-    ctx.font = `bold ${fs}px Segoe UI,sans-serif`;
+    const fs = Math.max(13, Math.min(26, arc * R / 9));
+    ctx.font = `bold ${fs | 0}px Segoe UI,sans-serif`;
     ctx.fillStyle = '#fff';
     ctx.shadowColor = 'rgba(0,0,0,.7)';
-    ctx.shadowBlur  = 3;
+    ctx.shadowBlur  = 4;
     ctx.textAlign   = 'right';
-    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 7, 4);
+    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 10, (fs | 0) / 3);
     ctx.restore();
 
     a += arc;
   });
 
-  // Hub
   ctx.beginPath();
-  ctx.arc(0, 0, 14, 0, Math.PI * 2);
+  ctx.arc(0, 0, 20, 0, Math.PI * 2);
   ctx.fillStyle = '#0d1a28';
   ctx.fill();
   ctx.strokeStyle = '#c8d8e8';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   ctx.restore();
 
-  // Fixed pointer at top
   ctx.beginPath();
-  ctx.moveTo(cx - 11, cy - R - 3);
-  ctx.lineTo(cx + 11, cy - R - 3);
-  ctx.lineTo(cx, cy - R + 16);
+  ctx.moveTo(cx - 15, cy - R - 4);
+  ctx.lineTo(cx + 15, cy - R - 4);
+  ctx.lineTo(cx, cy - R + 22);
   ctx.closePath();
   ctx.fillStyle = '#e53935';
   ctx.fill();
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2;
   ctx.stroke();
 }
 
 function wheelTargetRot(segIdx) {
   let cum = 0;
   for (let i = 0; i < segIdx; i++) cum += wheelSegs[i].prob * Math.PI * 2;
-  const mid   = cum + wheelSegs[segIdx].prob * Math.PI; // mid arc from top (local)
-  // For pointer (at -PI/2 world) to hit local angle: -PI/2 - mid + R = 0 → R = mid - PI/2...
-  // Using convention: segments start at -PI/2 rotated by wheelRot.
-  // Pointer aligns with local angle θ when θ + wheelRot = -PI/2 (mod 2PI)
-  // → wheelRot = -PI/2 - θ.  θ of segment mid = -PI/2 + mid → wheelRot = -mid
+  const mid   = cum + wheelSegs[segIdx].prob * Math.PI;
   const base  = -mid;
   const extra = Math.ceil((wheelRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
   return base + extra * Math.PI * 2;
@@ -785,11 +834,14 @@ function animateSpin(segIdx, onDone) {
   const target = wheelTargetRot(segIdx);
   const start  = wheelRot;
   const t0     = performance.now();
-  const dur    = 3800 + Math.random() * 1400;
-  function ease(t) { return 1 - Math.pow(1 - t, 4); }
+  const dur    = 4500 + Math.random() * 2500;
+  function ease(t) { return 1 - Math.pow(1 - t, 6); }
+  let lastSeg  = wheelCurrentSeg(wheelRot);
   function frame(now) {
     const t = Math.min((now - t0) / dur, 1);
     wheelRot = start + (target - start) * ease(t);
+    const curSeg = wheelCurrentSeg(wheelRot);
+    if (curSeg !== lastSeg) { lastSeg = curSeg; playTick(); }
     drawWheel();
     if (t < 1) { wheelRaf = requestAnimationFrame(frame); }
     else        { wheelRot = target; drawWheel(); onDone(); }
@@ -819,11 +871,12 @@ function renderWheelButtons(hasSeed) {
   const row = document.getElementById('wheel-btn-row');
   if (hasSeed) {
     row.innerHTML = `
-      <button onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">50 &#128176;</span></button>
-      <button class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">50 &#128176;</span></button>`;
+      <button onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">5 &#128176;</span></button>
+      <span class="wheel-or">OR</span>
+      <button class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
   } else {
     row.innerHTML = `
-      <button id="btn-wgen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">50 &#128176;</span></button>`;
+      <button id="btn-wgen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
   }
 }
 
@@ -832,6 +885,8 @@ function setWheelBtnsDisabled(on) {
 }
 
 async function wheelGenerate() {
+  initAudio();
+  playClick();
   setWheelBtnsDisabled(true);
   document.getElementById('wheel-error').textContent = '';
   const data = await api('POST', '/api/wheel/generate');
@@ -851,6 +906,8 @@ async function wheelGenerate() {
 
 async function wheelSpin() {
   if (!wheelSegs) return;
+  initAudio();
+  playClick();
   setWheelBtnsDisabled(true);
   document.getElementById('wheel-result').classList.add('hidden');
   document.getElementById('wheel-error').textContent = '';
@@ -863,6 +920,7 @@ async function wheelSpin() {
   }
 
   animateSpin(data.segmentIndex, () => {
+    playWinSound(data.reward);
     const el = document.getElementById('wheel-result');
     el.classList.remove('hidden', 'zero');
     if (data.reward === 0) {
@@ -872,7 +930,6 @@ async function wheelSpin() {
       el.textContent = `+ ${data.reward} GOLD`;
     }
     document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
-    // Seed is cleared after spin — show generate buttons
     wheelSegs = null;
     document.getElementById('wheel-seed-row').textContent = '';
     renderWheelButtons(false);

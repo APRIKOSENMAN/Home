@@ -149,6 +149,27 @@ nav { display: flex; gap: .2rem; }
 .nav-link:hover { background: rgba(255,255,255,.1); color: #fff; }
 .nav-link.active { background: var(--primary); color: #fff; }
 
+.vol-control {
+  display: flex; align-items: center; gap: .35rem;
+}
+.vol-icon {
+  width: 15px; height: 15px; color: rgba(255,255,255,.6); flex-shrink: 0;
+}
+#vol-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 72px; height: 3px;
+  background: rgba(255,255,255,.25); border-radius: 2px; outline: none; cursor: pointer;
+}
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: rgba(255,255,255,.85); cursor: pointer;
+}
+#vol-slider::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.85); cursor: pointer;
+}
+
 .logout-btn {
   background: rgba(255,255,255,.1);
   border: 1px solid rgba(255,255,255,.25);
@@ -593,6 +614,11 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
   font-size: .7rem; opacity: .8;
   background: rgba(0,0,0,.15);
   padding: .1rem .3rem; border-radius: 3px; margin-left: .3rem;
+}
+
+.wheel-or {
+  font-size: .7rem; font-weight: 700; letter-spacing: 1px;
+  color: var(--muted); align-self: center;
 }
 
 .wheel-result {
