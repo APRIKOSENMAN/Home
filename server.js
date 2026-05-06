@@ -111,10 +111,10 @@ async function initDb() {
 }
 
 app.use(express.json());
-// In production (after "npm run build"): serve from dist/
+// Serve static files directly (index.html + src/ as native ES modules)
 // In development: Vite dev server handles the frontend on port 5173
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
+  app.use(express.static(path.join(__dirname)));
 }
 app.use(session({
   secret: 'geheim-schluessel-hier-aendern',

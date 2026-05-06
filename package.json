@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "dev":     "concurrently \"node server.js\" \"vite\"",
-    "build":   "vite build",
+    "build:local": "vite build",
     "start":   "node server.js",
     "preview": "vite preview"
   },
