@@ -410,7 +410,7 @@ app.get('/api/daily', requireAuth, async (req, res) => {
     'SELECT daily_last_claimed, gold FROM users WHERE username = $1', [req.session.username]
   );
   const last = rows[0].daily_last_claimed ? new Date(rows[0].daily_last_claimed).getTime() : 0;
-  const DAY  = 24 * 60 * 60 * 1000;
+  const DAY  = 0.1 * 60 * 60 * 1000;
   const diff = Date.now() - last;
   res.json({ claimable: diff >= DAY, secondsUntilNext: diff >= DAY ? 0 : Math.ceil((DAY - diff) / 1000), gold: rows[0].gold });
 });
@@ -419,8 +419,8 @@ app.post('/api/daily/claim', requireAuth, async (req, res) => {
   const username = req.session.username;
   const { rows } = await pool.query('SELECT daily_last_claimed FROM users WHERE username = $1', [username]);
   const last = rows[0].daily_last_claimed ? new Date(rows[0].daily_last_claimed).getTime() : 0;
-  if (Date.now() - last < 24 * 60 * 60 * 1000) return res.status(400).json({ error: 'Noch nicht verfügbar' });
-  await pool.query('UPDATE users SET gold = gold + 100, daily_last_claimed = NOW() WHERE username = $1', [username]);
+  if (Date.now() - last < 0.1 * 60 * 60 * 1000) return res.status(400).json({ error: 'Noch nicht verfügbar' });
+  await pool.query('UPDATE users SET gold = gold + 150, daily_last_claimed = NOW() WHERE username = $1', [username]);
   const { rows: u } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
   res.json({ ok: true, gold: u[0].gold });
 });
