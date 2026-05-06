@@ -111,7 +111,11 @@ async function initDb() {
 }
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// In production (after "npm run build"): serve from dist/
+// In development: Vite dev server handles the frontend on port 5173
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist')));
+}
 app.use(session({
   secret: 'geheim-schluessel-hier-aendern',
   resave: false,

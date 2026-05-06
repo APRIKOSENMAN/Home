@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Style Guide – Komponenten</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <style>
+    /* Style Guide only */
+    .sg-page { max-width: 800px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    .sg-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 1px; margin-bottom: .3rem; }
+    .sg-subtitle { font-size: .85rem; color: var(--muted); margin-bottom: 2rem; }
+    .sg-section { margin-bottom: 2.5rem; }
+    .sg-section-label {
+      font-size: .65rem; font-weight: 700; letter-spacing: 2px;
+      color: var(--muted); text-transform: uppercase;
+      border-bottom: 2px solid var(--border-lt);
+      padding-bottom: .4rem; margin-bottom: 1.2rem;
+    }
+    .sg-component { margin-bottom: 1.6rem; }
+    .sg-component-name {
+      font-size: .75rem; font-weight: 700; letter-spacing: .8px;
+      color: var(--text); margin-bottom: .2rem;
+    }
+    .sg-component-desc {
+      font-size: .78rem; color: var(--muted); margin-bottom: .7rem;
+    }
+    .sg-example {
+      background: var(--bg);
+      border: 1px solid var(--border-lt);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      display: flex; flex-wrap: wrap; gap: .7rem; align-items: flex-start;
+    }
+    .sg-example.dark {
+      background: var(--hdr2);
+    }
+    .sg-example.stack { flex-direction: column; gap: .6rem; }
+    .sg-label {
+      font-size: .65rem; color: var(--muted); font-family: var(--mono);
+      margin-top: .35rem; display: block; width: 100%;
+    }
+    /* Stat row for profile */
+    .sg-stat-row { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    /* Nav example */
+    .sg-nav-bar {
+      background: var(--hdr); padding: .5rem 1rem;
+      border-radius: var(--radius); display: flex; gap: .3rem; align-items: center;
+    }
+    /* Sticky header */
+    .sg-sticky {
+      background: var(--hdr); color: #c8d8e8;
+      padding: .55rem 1.2rem; position: sticky; top: 0; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2px solid #0d1a28; margin-bottom: 0;
+    }
+    .sg-sticky-title { font-size: .78rem; font-weight: 700; letter-spacing: 1.5px; color: #e0e8f0; }
+    .sg-sticky-links { display: flex; gap: .8rem; flex-wrap: wrap; }
+    .sg-sticky-links a {
+      font-size: .7rem; color: rgba(255,255,255,.6); text-decoration: none;
+      font-weight: 700; letter-spacing: .5px;
+    }
+    .sg-sticky-links a:hover { color: #fff; }
+    /* Divider */
+    .sg-divider { border: none; border-top: 1px solid var(--border-lt); margin: 2rem 0; }
+    /* Mini table for demo */
+    .sg-table-wrap { overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+  <div class="sg-sticky">
+    <span class="sg-sticky-title">STYLE GUIDE</span>
+    <div class="sg-sticky-links">
+      <a href="#panels">Panels</a>
+      <a href="#buttons">Buttons</a>
+      <a href="#navigation">Navigation</a>
+      <a href="#forms">Formulare</a>
+      <a href="#tables">Tabellen</a>
+      <a href="#cards">Karten</a>
+      <a href="#feedback">Rückmeldungen</a>
+      <a href="#profile">Profil</a>
+      <a href="#factory">Fabrik</a>
+      <a href="#special">Spezial</a>
+    </div>
+  </div>
+
+  <div class="sg-page">
+    <div class="sg-title">Komponenten-Bibliothek</div>
+    <div class="sg-subtitle">Alle visuellen Bausteine der Website. Diese Seite nutzt dieselbe CSS-Datei wie die App – Änderungen am Aussehen sind hier automatisch sichtbar. Erreichbar unter: <code>/style-guide.html</code></div>
+
+    <!-- ── PANELS ────────────────────────────── -->
+    <div class="sg-section" id="panels">
+      <div class="sg-section-label">Panels – Inhaltsbereiche</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Panel</div>
+        <div class="sg-component-desc">Weißer Rahmen-Kasten für Inhaltsgruppen. Grundbaustein der gesamten Seite.</div>
+        <div class="sg-example stack">
+          <div class="panel" style="width:100%;max-width:320px">
+            <div class="panel-header">PANEL MIT HEADER</div>
+            <div style="padding:.8rem 1rem;font-size:.85rem">Hier steht der Inhalt des Panels.</div>
+          </div>
+          <div class="panel" style="width:100%;max-width:320px">
+            <div style="padding:.8rem 1rem;font-size:.85rem">Panel ohne Header.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Panel-Label</div>
+        <div class="sg-component-desc">Kleines dezentes Etikett über einem Panel.</div>
+        <div class="sg-example stack">
+          <div class="panel-label">ABSCHNITTSBEZEICHNUNG</div>
+          <div class="panel" style="width:100%;max-width:320px">
+            <div style="padding:.8rem 1rem;font-size:.85rem">Inhalt nach dem Label.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── BUTTONS ───────────────────────────── -->
+    <div class="sg-section" id="buttons">
+      <div class="sg-section-label">Buttons – Schaltflächen</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Primär-Button</div>
+        <div class="sg-component-desc">Blauer Hauptaktions-Button. Für die wichtigste Aktion in einem Bereich.</div>
+        <div class="sg-example">
+          <button class="card-body" style="all:unset;display:contents"><!-- reset --></button>
+          <!-- Buttons inline ohne card-body-Kontext -->
+          <button style="padding:.55rem 1.3rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius);font-size:.78rem;font-weight:700;letter-spacing:.6px;cursor:pointer">HAUPTAKTION</button>
+          <button style="padding:.55rem 1.3rem;background:#9aabb8;color:#fff;border:none;border-radius:var(--radius);font-size:.78rem;font-weight:700;letter-spacing:.6px;cursor:not-allowed;opacity:.7" disabled>DEAKTIVIERT</button>
+        </div>
+        <span class="sg-label">Links: normal · Rechts: deaktiviert</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Sekundär-Button</div>
+        <div class="sg-component-desc">Dunkelgrauer Button für Zweitaktionen (z.B. Abbrechen, Regenerieren).</div>
+        <div class="sg-example">
+          <button style="padding:.55rem 1.3rem;background:#4a5568;color:#fff;border:none;border-radius:var(--radius);font-size:.78rem;font-weight:700;letter-spacing:.6px;cursor:pointer">ZWEITAKTION</button>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Quick-Register-Button</div>
+        <div class="sg-component-desc">Lila Button für Schnellregistrierung. Nur auf der Anmeldeseite.</div>
+        <div class="sg-example">
+          <button class="btn-quick card-body" style="all:unset;padding:.55rem 1.3rem;background:#6b21a8;color:#fff;border:none;border-radius:var(--radius);font-size:.8rem;font-weight:700;letter-spacing:.5px;cursor:pointer">⚡ QUICK REGISTER</button>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Abstimmungs-Button (Vote)</div>
+        <div class="sg-component-desc">Daumen hoch / runter für Beiträge. Drei Zustände: normal, aktiv-grün, aktiv-rot.</div>
+        <div class="sg-example">
+          <button class="vote-btn">👍 12</button>
+          <button class="vote-btn active-up">👍 12</button>
+          <button class="vote-btn">👎 3</button>
+          <button class="vote-btn active-down">👎 3</button>
+        </div>
+        <span class="sg-label">Von links: normal, aktiv-grün, normal, aktiv-rot</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Ansicht-Umschalter (Toggle)</div>
+        <div class="sg-component-desc">Zwei Buttons zum Wechseln zwischen Darstellungsarten.</div>
+        <div class="sg-example">
+          <div class="view-toggle">
+            <button class="toggle-btn active">❙❙ KARTEN</button>
+            <button class="toggle-btn">☰ TABELLE</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Icon-Lösch-Button</div>
+        <div class="sg-component-desc">Kleiner unsichtbarer Button mit Mülleimer-Symbol. Wird bei Berührung rot.</div>
+        <div class="sg-example">
+          <button class="delete-btn" title="Löschen">🗑</button>
+          <span style="font-size:.8rem;color:var(--muted)">(Maus drüberhalten für Hover-Effekt)</span>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Abmelden-Button</div>
+        <div class="sg-component-desc">Erscheint in der Unterzeile der Kopfzeile.</div>
+        <div class="sg-example dark">
+          <button class="logout-btn">ABMELDEN</button>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Wheel-Buttons</div>
+        <div class="sg-component-desc">Spezielle Buttons im Wheel-Bereich mit Kostenanzeige.</div>
+        <div class="sg-example">
+          <div class="wheel-btn-row" style="position:static">
+            <button>▶ SPIN <span class="wheel-cost">5 💰</span></button>
+            <span class="wheel-or">OR</span>
+            <button class="btn-secondary">⟳ REGENERATE <span class="wheel-cost">5 💰</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── NAVIGATION ────────────────────────── -->
+    <div class="sg-section" id="navigation">
+      <div class="sg-section-label">Navigation</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Haupt-Navigation</div>
+        <div class="sg-component-desc">Navigations-Links in der Kopfzeile. Aktiver Bereich ist blau hervorgehoben.</div>
+        <div class="sg-example dark">
+          <div class="sg-nav-bar" style="border-radius:var(--radius);padding:.5rem .8rem;width:100%">
+            <nav style="display:flex;gap:.2rem">
+              <a class="nav-link active" href="#">BOARD</a>
+              <a class="nav-link" href="#">LEADERBOARD</a>
+              <a class="nav-link" href="#">WHEEL</a>
+              <a class="nav-link" href="#">FACTORY</a>
+              <a class="nav-link" href="#">DAILY</a>
+            </nav>
+            <div style="margin-left:auto">
+              <a class="nav-link nav-user" href="#">SPIELER01</a>
+            </div>
+          </div>
+        </div>
+        <span class="sg-label">Aktiver Link: BOARD (blau) · Benutzername-Badge rechts</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Autoren-Link</div>
+        <div class="sg-component-desc">Blauer klickbarer Username-Link, der zum Profil führt.</div>
+        <div class="sg-example">
+          <a class="author-link" href="#">spielername</a>
+          <span style="font-size:.82rem;color:var(--muted)">· Klickbar, führt zum Profil</span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── FORMS ─────────────────────────────── -->
+    <div class="sg-section" id="forms">
+      <div class="sg-section-label">Formulare</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Texteingabe mit Zeichenzähler</div>
+        <div class="sg-component-desc">Einzeiliges Textfeld mit Zeichenbegrenzung. Balken füllt sich, wird bei Annäherung orange und dann rot.</div>
+        <div class="sg-example stack">
+          <div class="field-wrap" style="max-width:340px;width:100%">
+            <input type="text" placeholder="Titel eingeben..." maxlength="100"
+                   oninput="sgUpdateCount(this)"
+                   style="padding:.55rem .8rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.9rem;background:#fafbfc;outline:none;width:100%;padding-right:3.8rem" />
+            <span class="char-count" style="right:.6rem;top:.58rem">0/100</span>
+            <div class="char-bar"><div class="char-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+        <span class="sg-label">Tippe rein um Zähler und Balken zu sehen</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Mehrzeiliges Textfeld mit Zeichenzähler</div>
+        <div class="sg-component-desc">Für längere Texteingaben (z.B. Beitragstext).</div>
+        <div class="sg-example">
+          <div class="field-wrap" style="max-width:340px;width:100%">
+            <textarea placeholder="Text eingeben..." maxlength="1000" rows="3"
+                      oninput="sgUpdateCount(this)"
+                      style="padding:.55rem .8rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.9rem;background:#fafbfc;outline:none;width:100%;padding-right:3.8rem;resize:vertical;font-family:var(--font)"></textarea>
+            <span class="char-count char-count-area" style="bottom:2rem;top:auto;right:.6rem">0/1000</span>
+            <div class="char-bar"><div class="char-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Lautstärke-Regler</div>
+        <div class="sg-component-desc">Horizontaler Schieberegler für die Sound-Lautstärke, erscheint in der Kopfzeile.</div>
+        <div class="sg-example dark">
+          <div class="vol-control">
+            <svg class="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.5" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── TABLES ─────────────────────────────── -->
+    <div class="sg-section" id="tables">
+      <div class="sg-section-label">Tabellen</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Sortierbare Tabelle mit Filter-Kopfzeile</div>
+        <div class="sg-component-desc">Wird für Leaderboard, Beiträge (Tabelle) und Spin-Verlauf verwendet. Gleiche Kopfzeilen-Struktur überall.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="sg-table-wrap" style="width:100%">
+            <table class="lb-table" style="min-width:420px">
+              <thead>
+                <tr>
+                  <th>
+                    <div class="th-inner">
+                      <span class="sortable">SPALTE A <span class="sort-icon desc"></span></span>
+                      <button class="col-filter-btn">🔍</button>
+                      <button class="col-clear-btn" style="display:inline">✕</button>
+                    </div>
+                  </th>
+                  <th>
+                    <div class="th-inner">
+                      <span class="sortable">SPALTE B <span class="sort-icon"></span></span>
+                      <button class="col-filter-btn">🔍</button>
+                      <button class="col-clear-btn hidden">✕</button>
+                    </div>
+                  </th>
+                  <th>
+                    <div class="th-inner">
+                      <span class="sortable">SPALTE C <span class="sort-icon asc"></span></span>
+                      <button class="col-filter-btn active">🔍</button>
+                      <button class="col-clear-btn" style="display:inline">✕</button>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Alpha</td><td class="col-num">42</td><td class="col-gold">150</td></tr>
+                <tr><td>Beta</td><td class="col-num">7</td><td class="col-gold">90</td></tr>
+                <tr><td>Gamma</td><td class="col-num">21</td><td class="col-likes">33</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <span class="sg-label">Spalte A: absteigend sortiert (▼) + rotes X aktiv · Spalte B: unsortiert · Spalte C: aufsteigend (▲) + Filter aktiv (goldenes Lupen-Icon)</span>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── CARDS ─────────────────────────────── -->
+    <div class="sg-section" id="cards">
+      <div class="sg-section-label">Inhalts-Karten</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Beitragskarte (Post-Card)</div>
+        <div class="sg-component-desc">Zeigt einen Beitrag mit Titel, Autor, Text und Abstimmungs-Buttons.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="post">
+            <div class="post-header">
+              <h4>Beispiel-Beitrag Titel</h4>
+              <span class="post-meta">
+                <a class="author-link" href="#">spielername</a>
+                &middot; 06.05.2026, 14:30
+              </span>
+            </div>
+            <p class="post-body">Das ist der Inhalt des Beitrags. Hier steht der Text, den der Spieler geschrieben hat.</p>
+            <div class="votes-area">
+              <div class="post-votes">
+                <button class="vote-btn active-up">👍 5</button>
+                <button class="vote-btn">👎 1</button>
+              </div>
+              <div class="voter-list" style="display:flex">
+                <a class="voter-chip up" href="#">👍 user1</a>
+                <a class="voter-chip down" href="#">👎 user2</a>
+              </div>
+            </div>
+          </div>
+          <div class="post">
+            <div class="post-header">
+              <h4>Eigener Beitrag (mit Lösch-Button)</h4>
+              <span class="post-meta">
+                <a class="author-link" href="#">ich</a>
+                &middot; 06.05.2026, 13:00
+                <button class="delete-btn" title="Löschen">🗑</button>
+              </span>
+            </div>
+            <p class="post-body">Eigene Beiträge zeigen ein Mülleimer-Symbol und können nicht bewertet werden.</p>
+            <div class="votes-area">
+              <span class="own-post-note">Eigene Posts können nicht bewertet werden</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Abstimmer-Chip (Voter-Chip)</div>
+        <div class="sg-component-desc">Kleine farbige Pille, die zeigt wer abgestimmt hat. Erscheint beim Hover auf den Abstimmungsbereich.</div>
+        <div class="sg-example">
+          <a class="voter-chip up" href="#">👍 spieler1</a>
+          <a class="voter-chip up" href="#">👍 max</a>
+          <a class="voter-chip down" href="#">👎 kritiker</a>
+        </div>
+        <span class="sg-label">Grün = Daumen hoch · Rot = Daumen runter</span>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── FEEDBACK ───────────────────────────── -->
+    <div class="sg-section" id="feedback">
+      <div class="sg-section-label">Rückmeldungen</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Fehlertext</div>
+        <div class="sg-component-desc">Kleiner roter Text unter Formularen oder Aktionen. Hält Platz auch wenn leer (kein Layout-Sprung).</div>
+        <div class="sg-example stack">
+          <p class="error">Nicht genug Gold (10 benötigt)</p>
+          <p class="error" style="color:var(--like)">✓ Aktion erfolgreich!</p>
+          <p class="error"></p>
+        </div>
+        <span class="sg-label">Zeile 1: Fehler (rot) · Zeile 2: Erfolg (grün, manuell gesetzt) · Zeile 3: Leer (hält Platz)</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Erfolgs-/Fehler-Banner</div>
+        <div class="sg-component-desc">Farbiger Banner nach abgeschlossener Aktion. Erscheint und verschwindet nach 3 Sekunden.</div>
+        <div class="sg-example stack">
+          <div class="post-feedback success">✓ Beitrag veröffentlicht!</div>
+          <div class="post-feedback error">✗ Titel und Inhalt erforderlich</div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Zeichenzähler + Fortschrittsbalken</div>
+        <div class="sg-component-desc">Zeigt wie viele Zeichen noch übrig sind. Balken wird orange (80%) und rot (100%).</div>
+        <div class="sg-example stack">
+          <div>
+            <span style="font-size:.75rem;color:var(--muted)">Balken-Zustände:</span>
+            <div style="display:flex;gap:.8rem;margin-top:.4rem;flex-wrap:wrap">
+              <div style="width:120px">
+                <div class="char-bar"><div class="char-fill" style="width:30%"></div></div>
+                <span style="font-size:.7rem;color:var(--muted)">30% – normal</span>
+              </div>
+              <div style="width:120px">
+                <div class="char-bar"><div class="char-fill warn" style="width:85%"></div></div>
+                <span style="font-size:.7rem;color:#e67e22">85% – Warnung</span>
+              </div>
+              <div style="width:120px">
+                <div class="char-bar"><div class="char-fill limit" style="width:100%"></div></div>
+                <span style="font-size:.7rem;color:var(--dislike)">100% – Limit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── PROFILE ───────────────────────────── -->
+    <div class="sg-section" id="profile">
+      <div class="sg-section-label">Profil</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Profil-Kopfzeile</div>
+        <div class="sg-component-desc">Zeigt Avatar, Username, Beitrittsdatum und Statistiken.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="panel profile-panel" style="width:100%">
+            <div class="profile-left">
+              <div class="profile-avatar">S</div>
+              <div class="profile-username">spieler01</div>
+              <div class="profile-joined">SEIT 01.01.2026</div>
+            </div>
+            <div class="profile-stats">
+              <div class="stat-cell rank-cell">
+                <div class="stat-val rank">#3</div>
+                <div class="stat-key"># RANK</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-val">12</div>
+                <div class="stat-key">BEITRÄGE</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-val likes">47</div>
+                <div class="stat-key">👍 LIKES</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-val dislikes">5</div>
+                <div class="stat-key">👎 DISLIKES</div>
+              </div>
+              <div class="stat-cell gold-cell">
+                <div class="stat-val gold">830</div>
+                <div class="stat-key">💰 GOLD</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-val">24</div>
+                <div class="stat-key">🎲 SPINS</div>
+              </div>
+              <div class="stat-cell gold-cell">
+                <div class="stat-val gold">+182</div>
+                <div class="stat-key">🎊 BESTER SPIN</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── FACTORY ───────────────────────────── -->
+    <div class="sg-section" id="factory">
+      <div class="sg-section-label">Fabrik</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Lager-Gebäude (draggbar)</div>
+        <div class="sg-component-desc">Zeile im Gebäude-Lager, die ins Stadtgitter gezogen werden kann.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="panel" style="width:190px">
+            <div class="panel-header">STORAGE – GEBÄUDE</div>
+            <div class="storage-building">
+              <span class="sb-icon">🏭</span>
+              <span class="sb-info"><b>Goldbarrengießerei</b><br><small>2×3 Felder</small></span>
+              <span class="sb-qty">×3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Lager-Item-Zeile</div>
+        <div class="sg-component-desc">Zeigt ein produziertes Item im Lager mit Menge an.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="panel" style="width:190px">
+            <div class="panel-header">STORAGE – ITEMS</div>
+            <div class="storage-item-row"><span>🥇 Goldbarren</span><span class="col-gold">×5</span></div>
+            <div class="storage-item-row"><span>🛒 Holzschubkarren</span><span class="col-gold">×2</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Stadtgitter + Platziertes Gebäude</div>
+        <div class="sg-component-desc">Das 20×20 Raster, auf dem Gebäude platziert werden. Gebäude sind farbige Rechtecke mit Icon und Status-Punkt.</div>
+        <div class="sg-example" style="padding:.6rem;overflow:auto">
+          <div style="position:relative;display:inline-grid;grid-template-columns:repeat(7,24px);grid-template-rows:repeat(5,24px);border:1px solid var(--border)">
+            <!-- 7x5 mini grid -->
+            <script>
+              document.currentScript.insertAdjacentHTML('afterend',
+                Array.from({length:35}).map((_,i)=>`<div class="city-cell" data-x="${i%7}" data-y="${Math.floor(i/7)}"></div>`).join('')
+              );
+            </script>
+            <!-- Building at x=1, y=0, 2x3 -->
+            <div class="placed-building" style="left:24px;top:0;width:48px;height:72px;background:#b8860b;border-color:#8b6914">
+              <span class="pb-icon">🏭</span>
+              <span class="job-dot running"></span>
+            </div>
+            <!-- Building at x=4, y=1, 2x2 -->
+            <div class="placed-building" style="left:96px;top:24px;width:48px;height:48px;background:#1565c0;border-color:#0d47a1">
+              <span class="pb-icon">🏪</span>
+              <span class="job-dot done"></span>
+            </div>
+          </div>
+        </div>
+        <span class="sg-label">Gelber Punkt = Rezept läuft · Grüner Punkt = Fertig zum Einsammeln</span>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Rezept-Anzeige</div>
+        <div class="sg-component-desc">Zeigt Produktionsrezept mit Eingabe, Zeit und Ausgabe. Drei Zustände: bereit, läuft, fertig.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="panel" style="max-width:310px;width:100%">
+            <div class="bp-title"><span>🏭 Goldbarrengießerei</span></div>
+            <div class="recipe-row">
+              <div class="recipe-slot">📥 10 💰 Gold</div>
+              <div class="recipe-arrow">→ 10 min →</div>
+              <div class="recipe-slot">📤 1 🥇 Goldbarren</div>
+            </div>
+            <div class="bp-actions">
+              <small class="bp-gold">Gold: 45 💰</small>
+              <button style="padding:.4rem .9rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius);font-size:.75rem;font-weight:700;cursor:pointer">▶ STARTEN (−10 Gold)</button>
+            </div>
+          </div>
+          <div class="panel" style="max-width:310px;width:100%">
+            <div class="bp-title"><span>🏭 Goldbarrengießerei</span></div>
+            <div class="recipe-row">
+              <div class="recipe-slot done">✓ 10 💰 Gold</div>
+              <div class="recipe-arrow">→</div>
+              <div class="recipe-slot">📤 1 🥇 Goldbarren</div>
+            </div>
+            <div class="bp-progress-wrap"><div class="bp-progress-bar" style="width:62%"></div></div>
+            <div class="bp-progress-label">62% · noch 3m 47s</div>
+            <div class="bp-actions">
+              <button style="padding:.4rem .9rem;background:#9aabb8;color:#fff;border:none;border-radius:var(--radius);font-size:.75rem;font-weight:700;cursor:not-allowed" disabled>⏳ 3m 47s</button>
+            </div>
+          </div>
+          <div class="panel" style="max-width:310px;width:100%">
+            <div class="bp-title"><span>🏭 Goldbarrengießerei</span></div>
+            <div class="recipe-row">
+              <div class="recipe-slot done">✓ 10 💰 Gold</div>
+              <div class="recipe-arrow">→</div>
+              <div class="recipe-slot ready">✅ 1 🥇 Goldbarren</div>
+            </div>
+            <div class="bp-actions">
+              <button style="padding:.4rem .9rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius);font-size:.75rem;font-weight:700;cursor:pointer">📦 EINSAMMELN</button>
+            </div>
+          </div>
+        </div>
+        <span class="sg-label">Zustand 1: Bereit zum Starten · Zustand 2: Läuft (62%) · Zustand 3: Fertig</span>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── SPECIAL ────────────────────────────── -->
+    <div class="sg-section" id="special">
+      <div class="sg-section-label">Spezial</div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Vorschau-Tooltip</div>
+        <div class="sg-component-desc">Erscheint beim Hovern über einen Seed-Wert in der Spin-Verlauf-Tabelle. Zeigt das Rad in Miniatur.</div>
+        <div class="sg-example">
+          <div style="background:#162032;border:1px solid #2a3f57;border-radius:6px;padding:6px;display:inline-block">
+            <canvas id="sg-wheel-preview" width="100" height="100"></canvas>
+          </div>
+          <span style="font-size:.82rem;color:var(--muted);align-self:center">← Beispiel-Minirad<br>(erscheint neben Mauszeiger)</span>
+        </div>
+      </div>
+
+      <div class="sg-component">
+        <div class="sg-component-name">Modal-Dialog</div>
+        <div class="sg-component-desc">Überlagerndes Fenster, abdunkelt den Rest. Schließt bei Klick auf Hintergrund oder Escape. Hier nur als statische Vorschau.</div>
+        <div class="sg-example stack" style="padding:.6rem">
+          <div class="panel" style="max-width:460px;width:100%">
+            <div class="panel-header">BEITRAG VERFASSEN</div>
+            <div style="display:flex;gap:1rem;padding:1rem;align-items:flex-start;flex-wrap:wrap">
+              <div style="background:#162032;border-radius:50%;width:80px;height:80px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:.7rem">Mini-Rad</div>
+              <div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:.5rem">
+                <input type="text" placeholder="Titel..." style="padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.85rem;background:#fafbfc;outline:none">
+                <textarea placeholder="Text..." rows="3" style="padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.85rem;background:#fafbfc;outline:none;resize:vertical;font-family:var(--font)"></textarea>
+                <div style="display:flex;gap:.5rem;justify-content:flex-end">
+                  <button style="padding:.45rem 1rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius);font-size:.75rem;font-weight:700;cursor:pointer">VERÖFFENTLICHEN</button>
+                  <button style="padding:.45rem 1rem;background:#4a5568;color:#fff;border:none;border-radius:var(--radius);font-size:.75rem;font-weight:700;cursor:pointer">ABBRECHEN</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <span style="font-size:.78rem;color:var(--muted)">Im echten Einsatz: dunkler Hintergrund über der ganzen Seite, dieses Fenster zentriert darüber.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Zeichenzähler Demo
+    function sgUpdateCount(el) {
+      const wrap = el.closest('.field-wrap');
+      if (!wrap) return;
+      const max = parseInt(el.maxLength);
+      const len = el.value.length;
+      const pct = len / max;
+      const counter = wrap.querySelector('.char-count');
+      const fill    = wrap.querySelector('.char-fill');
+      if (!counter || !fill) return;
+      counter.textContent = `${len}/${max}`;
+      fill.style.width = (pct * 100) + '%';
+      const warn  = pct >= 0.8;
+      const limit = pct >= 1;
+      counter.className = 'char-count' + (el.tagName==='TEXTAREA'?' char-count-area':'') + (limit?' limit':warn?' warn':'');
+      fill.className    = 'char-fill' + (limit?' limit':warn?' warn':'');
+    }
+
+    // Mini-Wheel Demo auf Preview-Canvas
+    (function() {
+      const canvas = document.getElementById('sg-wheel-preview');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const S = 100, cx = 50, cy = 50, R = 38;
+      const segs = [
+        { prob: 0.35, color: '#9e9e9e' },
+        { prob: 0.30, color: '#64b5f6' },
+        { prob: 0.20, color: '#9c27b0' },
+        { prob: 0.10, color: '#ef5350' },
+        { prob: 0.05, color: '#ffd700' },
+      ];
+      ctx.beginPath(); ctx.arc(cx,cy,R+4,0,Math.PI*2);
+      ctx.fillStyle='#162032'; ctx.fill();
+      let a = -Math.PI/2;
+      segs.forEach(s => {
+        const arc = s.prob * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(cx,cy);
+        ctx.arc(cx,cy,R,a,a+arc); ctx.closePath();
+        ctx.fillStyle=s.color; ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=1; ctx.stroke();
+        a+=arc;
+      });
+      ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2);
+      ctx.fillStyle='#0d1a28'; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(cx-5,cy-R-1); ctx.lineTo(cx+5,cy-R-1); ctx.lineTo(cx,cy-R+8);
+      ctx.closePath(); ctx.fillStyle='#e53935'; ctx.fill();
+    })();
+  </script>
+</body>
+</html>
