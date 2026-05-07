@@ -14,7 +14,7 @@ function renderDaily(data) {
   if (err) err.textContent = '';
   if (data.claimable) {
     btn.disabled = false;
-    btn.textContent = '🎁 100 GOLD EINSAMMELN';
+    btn.textContent = '🎁 150 GOLD EINSAMMELN';
     if (timer) timer.textContent = '';
   } else {
     btn.disabled = true;
@@ -26,7 +26,7 @@ function renderDaily(data) {
       if (remaining <= 0) {
         clearInterval(dailyTimerInterval);
         btn.disabled = false;
-        btn.textContent = '🎁 100 GOLD EINSAMMELN';
+        btn.textContent = '🎁 150 GOLD EINSAMMELN';
         timer.textContent = '';
         return;
       }
@@ -49,7 +49,7 @@ export async function claimDaily() {
   if (data.error) { err.textContent = data.error; btn.disabled = false; return; }
   err.textContent = '';
   const timer = document.getElementById('daily-timer');
-  if (timer) timer.textContent = `+100 Gold eingesammelt! Guthaben: ${data.gold} 💰`;
+  if (timer) timer.textContent = `+150 Gold eingesammelt! Guthaben: ${data.gold} 💰`;
   btn.textContent = '✓ Eingesammelt!';
   setTimeout(loadDaily, 2000);
 }
