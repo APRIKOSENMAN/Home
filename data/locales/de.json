@@ -15,5 +15,14 @@
   "quests.quest_002.name": "Händler",
   "quests.quest_002.description": "Verkaufe 3 Items im Handel.",
   "quests.quest_003.name": "Stadtgespräch",
-  "quests.quest_003.description": "Veröffentliche eine Nachricht im Board."
+  "quests.quest_003.description": "Veröffentliche eine Nachricht im Board.",
+  "currencies.gold.name": "Gold",
+  "currencies.premium.name": "Premium Coins",
+  "currencies.gems.name": "Edelsteine",
+  "transaction.spin_wheel.label": "Glücksrad dreht",
+  "transaction.quest_complete.label": "Quest abgeschlossen",
+  "transaction.item_purchase.label": "Item gekauft",
+  "transaction.item_sell.label": "Item verkauft",
+  "transaction.admin.label": "Admin-Transaktion",
+  "transaction.daily_bonus.label": "Täglicher Bonus"
 }

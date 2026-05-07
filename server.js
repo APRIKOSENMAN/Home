@@ -9,6 +9,7 @@ const path           = require('path');
 const BUILDINGS = require('./data/buildings.json');
 const RECIPES   = require('./data/recipes.json');
 const ITEMS     = require('./data/items.json');
+const { executeTransaction, getUserState } = require('./currency-manager');
 
 function parseDuration(str) {
   if (typeof str === 'number') return str;
@@ -101,6 +102,9 @@ async function initDb() {
     );
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_last_claimed TIMESTAMPTZ DEFAULT NULL;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_currency INTEGER DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS unplaced_buildings (
       username TEXT NOT NULL,
@@ -165,6 +169,20 @@ async function initDb() {
       total_price    INT  NOT NULL,
       timestamp      TIMESTAMPTZ DEFAULT NOW()
     );
+  `);
+
+  // Currency Transaction Audit Log
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS currency_transactions (
+      id          SERIAL PRIMARY KEY,
+      username    TEXT NOT NULL REFERENCES users(username),
+      action      TEXT NOT NULL,
+      delta_json  TEXT NOT NULL,
+      reason      TEXT,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_currency_trans_user ON currency_transactions(username);
+    CREATE INDEX IF NOT EXISTS idx_currency_trans_action ON currency_transactions(action);
   `);
 
   // Seed market_trader (idempotent)
@@ -234,6 +252,57 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ ok: true }); });
 app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }));
+
+// ── Currency System ───────────────────────────────
+
+/**
+ * GET /api/user
+ * Returns complete user state: wallet, inventory, buildings
+ */
+app.get('/api/user', requireAuth, async (req, res) => {
+  try {
+    const state = await getUserState(pool, req.session.username);
+    if (!state) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    res.json(state);
+  } catch (error) {
+    console.error('GET /api/user error:', error);
+    res.status(500).json({ error: 'Fehler beim Abrufen des Benutzers' });
+  }
+});
+
+/**
+ * POST /api/transaction
+ * Execute a currency transaction
+ * Body: { action, payload }
+ */
+app.post('/api/transaction', requireAuth, async (req, res) => {
+  const { action, payload } = req.body;
+  
+  if (!action) return res.status(400).json({ error: 'action erforderlich' });
+  if (!payload || typeof payload !== 'object') {
+    return res.status(400).json({ error: 'payload erforderlich' });
+  }
+
+  try {
+    const result = await executeTransaction(pool, req.session.username, action, payload);
+    
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      transaction: {
+        action,
+        timestamp: new Date().toISOString()
+      },
+      newWallet: result.newState
+    });
+  } catch (error) {
+    console.error('POST /api/transaction error:', error);
+    res.status(500).json({ error: 'Transaktionsfehler' });
+  }
+});
 
 // ── Posts ─────────────────────────────────────────
 

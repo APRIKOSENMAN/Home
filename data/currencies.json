@@ -1,0 +1,37 @@
+{
+  "currencies": [
+    {
+      "id": "gold",
+      "type": "soft",
+      "i18nKey": "currencies.gold.name",
+      "dbField": "gold",
+      "icon": "🪙",
+      "min": 0,
+      "max": 999999999,
+      "tradeable": false,
+      "operations": ["earn", "spend", "transfer", "admin"]
+    },
+    {
+      "id": "premium",
+      "type": "hard",
+      "i18nKey": "currencies.premium.name",
+      "dbField": "premium_currency",
+      "icon": "💎",
+      "min": 0,
+      "max": 999999,
+      "tradeable": false,
+      "operations": ["purchase", "admin"]
+    },
+    {
+      "id": "gems",
+      "type": "soft",
+      "i18nKey": "currencies.gems.name",
+      "dbField": "gems",
+      "icon": "✨",
+      "min": 0,
+      "max": 999999999,
+      "tradeable": true,
+      "operations": ["earn", "spend", "transfer", "admin"]
+    }
+  ]
+}
