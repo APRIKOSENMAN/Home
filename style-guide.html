@@ -81,6 +81,7 @@
       <a href="#feedback">Rückmeldungen</a>
       <a href="#profile">Profil</a>
       <a href="#factory">Fabrik</a>
+      <a href="#trade">Trade Table</a>
       <a href="#special">Spezial</a>
     </div>
   </div>
@@ -603,6 +604,55 @@
           </div>
         </div>
         <span class="sg-label">Zustand 1: Bereit zum Starten · Zustand 2: Läuft (62%) · Zustand 3: Fertig</span>
+      </div>
+    </div>
+
+    <hr class="sg-divider" />
+
+    <!-- ── TRADE TABLE ───────────────────────── -->
+    <div class="sg-section" id="trade">
+      <div class="sg-section-label">Trade Table</div>
+
+      <div class="sg-component">
+        <div class="sg-label">Normaler Zustand</div>
+        <table class="trade-table">
+          <thead>
+            <tr>
+              <th>ITEM</th>
+              <th></th>
+              <th class="col-num">STOCK</th>
+              <th></th>
+              <th></th>
+              <th class="col-num">BESITZ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Gold Bar</td>
+              <td class="trade-icon">🥇</td>
+              <td class="col-num">42</td>
+              <td><button class="trade-buy-btn">Kaufen</button></td>
+              <td><button class="trade-sell-btn">Verkaufen</button></td>
+              <td class="col-num trade-amount">5</td>
+            </tr>
+            <tr>
+              <td>Material 002</td>
+              <td class="trade-icon">📦</td>
+              <td class="col-num">0</td>
+              <td><button class="trade-buy-btn" disabled>Kaufen</button></td>
+              <td><button class="trade-sell-btn">Verkaufen</button></td>
+              <td class="col-num trade-amount">12</td>
+            </tr>
+            <tr>
+              <td>Material 003</td>
+              <td class="trade-icon">🪵</td>
+              <td class="col-num">99</td>
+              <td><button class="trade-buy-btn">Kaufen</button></td>
+              <td><button class="trade-sell-btn" disabled>Verkaufen</button></td>
+              <td class="col-num trade-amount">0</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 

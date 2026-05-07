@@ -162,6 +162,14 @@ Diese Tabelle zeigt, welche Komponente wo auf der Website eingesetzt wird. Jede 
 
 ---
 
+## HANDEL
+
+| Komponenten-Typ | Inhaltsversion | Verwendungsorte | Notizen |
+|---|---|---|---|
+| Trade Table | Item-Handel (Kauf/Verkauf) | Noch nicht eingebaut – Komponente bereit | Spalten: Item, Icon, Stock, Kaufen, Verkaufen, Besitz |
+
+---
+
 ## SPEZIAL
 
 | Komponenten-Typ | Inhaltsversion | Verwendungsorte | Notizen |

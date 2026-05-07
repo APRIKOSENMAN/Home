@@ -370,6 +370,57 @@ Hier sind alle wiederkehrenden visuellen Bausteine der Website beschrieben. Dies
 
 ---
 
+## KATEGORIE: HANDEL
+
+---
+
+### Trade Table
+**Zweck:** Tabelle zum Anzeigen und Handeln von Items – zeigt den Lagerbestand des Händlers und den eigenen Bestand pro Item, mit Kauf- und Verkaufs-Button pro Zeile.
+
+**Aussehen:** Gleiche Kopfzeile wie alle anderen Tabellen (dunkelblaues Header-Band). Kauf-Button grün umrandet, Verkauf-Button rot umrandet. Eigene Menge (`trade-amount`) in Primärfarbe und Monospace-Schrift. Deaktivierte Buttons sind ausgegraut.
+
+**Spalten (fest):**
+| Spalte | CSS-Klasse | Beschreibung |
+|--------|-----------|--------------|
+| ITEM | – | Name des Items (Text) |
+| Icon | `.trade-icon` | Emoji/Symbol des Items, zentriert |
+| STOCK | `.col-num` | Menge beim Händler |
+| Kaufen | – | `.trade-buy-btn` – disabled wenn Stock = 0 |
+| Verkaufen | – | `.trade-sell-btn` – disabled wenn eigene Menge = 0 |
+| BESITZ | `.col-num .trade-amount` | Eigene Menge, blau hervorgehoben |
+
+**Mobile vs. Desktop:** TODO – horizontales Scrollen bei vielen Items nötig.
+
+**Wann verwenden:** Überall wo Spieler Items kaufen oder verkaufen können (Shop, Marktplatz).
+
+**HTML-Muster:**
+```html
+<table class="trade-table">
+  <thead>
+    <tr>
+      <th>ITEM</th>
+      <th></th>
+      <th class="col-num">STOCK</th>
+      <th></th>
+      <th></th>
+      <th class="col-num">BESITZ</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Gold Bar</td>
+      <td class="trade-icon">🥇</td>
+      <td class="col-num">42</td>
+      <td><button class="trade-buy-btn">Kaufen</button></td>
+      <td><button class="trade-sell-btn">Verkaufen</button></td>
+      <td class="col-num trade-amount">5</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+---
+
 ## KATEGORIE: SPEZIAL
 
 ---

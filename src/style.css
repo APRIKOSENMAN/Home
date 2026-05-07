@@ -913,3 +913,46 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
   transition: background .12s;
 }
 .bp-close-btn:hover { background: #f5f5f5; }
+
+/* ── Trade Table ──────────────────────────────── */
+.trade-table {
+  width: 100%; border-collapse: collapse; font-size: .85rem;
+}
+.trade-table thead tr { background: var(--hdr2); color: #c8d8e8; }
+.trade-table th {
+  padding: .5rem .9rem; text-align: left;
+  font-size: .7rem; font-weight: 700; letter-spacing: 1px;
+  border-right: 1px solid #2a3f57;
+}
+.trade-table th:last-child { border-right: none; }
+.trade-table td {
+  padding: .45rem .9rem;
+  border-bottom: 1px solid var(--border-lt);
+  border-right: 1px solid var(--border-lt);
+}
+.trade-table td:last-child { border-right: none; }
+.trade-table tbody tr:nth-child(even) { background: #f7f9fb; }
+.trade-table tbody tr:hover { background: #eef2f7; }
+.trade-icon { font-size: 1.1rem; text-align: center; width: 2rem; }
+.trade-amount { font-family: var(--mono); font-weight: 700; color: var(--primary); }
+.trade-buy-btn, .trade-sell-btn {
+  padding: .2rem .55rem;
+  background: none; border-radius: var(--radius);
+  font-size: .72rem; font-family: var(--font); cursor: pointer;
+  white-space: nowrap; transition: all .15s;
+}
+.trade-buy-btn {
+  border: 1px solid #a5d6a7; color: var(--like);
+}
+.trade-buy-btn:hover:not(:disabled) {
+  background: #e8f5e9; border-color: var(--like);
+}
+.trade-sell-btn {
+  border: 1px solid #ef9a9a; color: var(--dislike);
+}
+.trade-sell-btn:hover:not(:disabled) {
+  background: #ffebee; border-color: var(--dislike);
+}
+.trade-buy-btn:disabled, .trade-sell-btn:disabled {
+  color: var(--muted); border-color: var(--border-lt); cursor: not-allowed;
+}
