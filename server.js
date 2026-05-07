@@ -1,6 +1,7 @@
 require('dns').setDefaultResultOrder('ipv4first');
 const express        = require('express');
 const session        = require('express-session');
+const PgSession      = require('connect-pg-simple')(session);
 const bcrypt         = require('bcryptjs');
 const { Pool }       = require('pg');
 const { randomUUID } = require('crypto');
@@ -185,10 +186,11 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname)));
 }
 app.use(session({
-  secret: 'geheim-schluessel-hier-aendern',
+  store: new PgSession({ pool, createTableIfMissing: true }),
+  secret: process.env.SESSION_SECRET || 'geheim-schluessel-hier-aendern',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 }
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
 function requireAuth(req, res, next) {
