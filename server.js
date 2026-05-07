@@ -659,7 +659,15 @@ app.get('/api/trade/offers/:trader_id', requireAuth, async (req, res) => {
       };
     });
 
-  res.json({ trader: trader[0], offers });
+  const { rows: playerItems } = await pool.query(
+    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1',
+    [req.session.username]
+  );
+  const { rows: playerRow } = await pool.query(
+    'SELECT gold FROM users WHERE username=$1',
+    [req.session.username]
+  );
+  res.json({ trader: trader[0], offers, gold: playerRow[0]?.gold ?? 0, items: playerItems });
 });
 
 app.post('/api/trade/buy', requireAuth, async (req, res) => {

@@ -9,6 +9,7 @@ import { loadProfile, deletePost, updateProfileStats, handleSearch } from './pro
 import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoardView, sortPostsTable, renderPostsTable, renderPosts, vote } from './board.js';
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
 import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
+import { loadTrade, tradeBuy, tradeSell, updateGoldDisplays } from './trade.js';
 
 // ── Register renderers (avoids circular deps in table-filter.js) ──
 registerRenderer('lb', renderLeaderboard);
@@ -146,6 +147,10 @@ function handleRoute() {
     document.querySelector('[href="#daily"]').classList.add('active');
     showView('daily');
     loadDaily();
+  } else if (hash === '#trade') {
+    document.querySelector('[href="#trade"]').classList.add('active');
+    showView('trade');
+    loadTrade();
   }
 }
 
@@ -236,6 +241,10 @@ Object.assign(window, {
   closeBuildingPanel,
   // daily
   claimDaily,
+  // trade
+  tradeBuy,
+  tradeSell,
+  updateGoldDisplays,
 });
 
 // ── Init ─────────────────────────────────────────

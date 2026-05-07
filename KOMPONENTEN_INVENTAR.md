@@ -1,6 +1,6 @@
 # KOMPONENTEN_INVENTAR.md – Verwendungsorte
 
-*Zuletzt aktualisiert: 2026-05-06*
+*Zuletzt aktualisiert: 2026-05-07*
 
 Diese Tabelle zeigt, welche Komponente wo auf der Website eingesetzt wird. Jede Komponente verweist auf die ausführliche Beschreibung in [KOMPONENTEN.md](KOMPONENTEN.md).
 
@@ -73,6 +73,7 @@ Diese Tabelle zeigt, welche Komponente wo auf der Website eingesetzt wird. Jede 
 | Haupt-Nav-Link | "WHEEL" | Kopfzeile | |
 | Haupt-Nav-Link | "FACTORY" | Kopfzeile | |
 | Haupt-Nav-Link | "DAILY" | Kopfzeile | |
+| Haupt-Nav-Link | "HANDEL" | Kopfzeile | |
 | Benutzername-Badge | Eigener Username | Kopfzeile rechts | Öffnet Unterzeile bei Klick |
 | Autoren-Link | Beitrags-Autor | Board (Karte + Tabelle), Profil | |
 | Autoren-Link | Username | Leaderboard | |
@@ -166,7 +167,10 @@ Diese Tabelle zeigt, welche Komponente wo auf der Website eingesetzt wird. Jede 
 
 | Komponenten-Typ | Inhaltsversion | Verwendungsorte | Notizen |
 |---|---|---|---|
-| Trade Table | Item-Handel (Kauf/Verkauf) | Noch nicht eingebaut – Komponente bereit | Spalten: Item, Icon, Stock, Kaufen, Verkaufen, Besitz |
+| Panel | Händler-Ansicht | Handel | Enthält Gold-Anzeige + Trade Table |
+| Panel-Header | Händler-Name (dynamisch) | Handel | ID: `trade-trader-name`, aus API befüllt |
+| Trade Table | Item-Handel (Kauf/Verkauf) | Handel | Spalten: Icon, Item, Vorrat, Kaufen, Verkaufen, Besitz |
+| Fehlertext | Handel-Fehler | Handel | |
 
 ---
 
