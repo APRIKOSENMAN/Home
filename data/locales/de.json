@@ -1,13 +1,13 @@
 {
-  "items.material_001.name": "Goldbarren",
-  "items.material_002.name": "Stein",
-  "items.material_003.name": "Fenster",
-  "items.material_004.name": "Seife",
-  "items.material_005.name": "Ziegel",
-  "items.material_006.name": "Ölfaß",
-  "items.material_007.name": "Schraube",
-  "items.material_008.name": "Zahnrad",
-  "items.material_900.name": "Ticket",
-  "items.material_901.name": "Edelstein",
+  "items.item_001.name": "Goldbarren",
+  "items.item_002.name": "Stein",
+  "items.item_003.name": "Fenster",
+  "items.item_004.name": "Seife",
+  "items.item_005.name": "Ziegel",
+  "items.item_006.name": "Ölfaß",
+  "items.item_007.name": "Schraube",
+  "items.item_008.name": "Zahnrad",
+  "items.item_900.name": "Ticket",
+  "items.item_901.name": "Edelstein",
   "buildings.building_001.name": "Goldbarrengießerei"
 }

@@ -132,6 +132,11 @@ async function initDb() {
   await pool.query(`UPDATE unplaced_buildings SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
   await pool.query(`UPDATE city_buildings     SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
   await pool.query(`UPDATE storage_items SET item_type = 'material_001' WHERE item_type = 'goldbarren'`);
+  // Migrate material_xxx → item_xxx
+  for (const n of ['001','002','003','004','005','006','007','008','900','901']) {
+    await pool.query(`UPDATE storage_items    SET item_type='item_${n}' WHERE item_type='material_${n}'`);
+    await pool.query(`UPDATE trader_inventory SET item_type='item_${n}' WHERE item_type='material_${n}'`);
+  }
 
   // Trade tables
   await pool.query(`

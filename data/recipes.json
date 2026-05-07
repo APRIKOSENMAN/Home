@@ -2,7 +2,7 @@
   "recipe_001": {
     "building": "building_001",
     "inputs":  [{ "type": "gold", "qty": 10 }],
-    "outputs": [{ "item": "material_001", "qty": 1 }],
+    "outputs": [{ "item": "item_001", "qty": 1 }],
     "duration": "10m"
   }
 }

@@ -1,13 +1,13 @@
 {
-  "items.material_001.name": "Gold Bar",
-  "items.material_002.name": "Stone",
-  "items.material_003.name": "Window",
-  "items.material_004.name": "Soap",
-  "items.material_005.name": "Brick",
-  "items.material_006.name": "Oil Barrel",
-  "items.material_007.name": "Bolt",
-  "items.material_008.name": "Gear",
-  "items.material_900.name": "Ticket",
-  "items.material_901.name": "Gemstone",
+  "items.item_001.name": "Gold Bar",
+  "items.item_002.name": "Stone",
+  "items.item_003.name": "Window",
+  "items.item_004.name": "Soap",
+  "items.item_005.name": "Brick",
+  "items.item_006.name": "Oil Barrel",
+  "items.item_007.name": "Bolt",
+  "items.item_008.name": "Gear",
+  "items.item_900.name": "Ticket",
+  "items.item_901.name": "Gemstone",
   "buildings.building_001.name": "Gold Smelter"
 }
