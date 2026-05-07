@@ -9,5 +9,11 @@
   "items.item_008.name": "Gear",
   "items.item_900.name": "Ticket",
   "items.item_901.name": "Gemstone",
-  "buildings.building_001.name": "Gold Smelter"
+  "buildings.building_001.name": "Gold Smelter",
+  "quests.quest_001.name": "Lucky Wheel",
+  "quests.quest_001.description": "Spin the wheel once.",
+  "quests.quest_002.name": "Trader",
+  "quests.quest_002.description": "Sell 3 items in the trade tab.",
+  "quests.quest_003.name": "Town Talk",
+  "quests.quest_003.description": "Post a message on the board."
 }

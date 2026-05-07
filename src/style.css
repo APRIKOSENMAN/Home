@@ -765,23 +765,18 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .modal-btn-row .btn-secondary { background: #4a5568; }
 .modal-btn-row .btn-secondary:hover { background: #5a6578; }
 
-/* ── DAILY ────────────────────────────────────── */
-.daily-panel { max-width: 480px; margin: 2rem auto; }
-.daily-body {
-  display: flex; align-items: center; gap: 1.2rem;
-  padding: 1.4rem 1.2rem; flex-wrap: wrap;
+/* ── QUESTS ───────────────────────────────────── */
+#quest-list { display: flex; flex-direction: column; gap: .5rem; }
+.quest-card { padding: 1rem 1.2rem; }
+.quest-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .4rem; }
+.quest-name { font-weight: 700; font-size: .95rem; }
+.quest-type-badge {
+  font-size: .68rem; font-weight: 700; letter-spacing: .8px;
+  background: var(--primary); color: #fff;
+  padding: .15rem .55rem; border-radius: 99px;
 }
-.daily-icon { font-size: 2.8rem; line-height: 1; }
-.daily-info { flex: 1; }
-.daily-title { font-weight: 700; font-size: .95rem; margin-bottom: .3rem; }
-.daily-timer { font-size: .8rem; color: var(--muted); font-family: var(--mono); }
-.daily-body button {
-  padding: .6rem 1.3rem; background: var(--primary); color: #fff; border: none;
-  border-radius: var(--radius); font-size: .78rem; font-weight: 700;
-  letter-spacing: .6px; cursor: pointer; transition: background .15s; white-space: nowrap;
-}
-.daily-body button:hover:not(:disabled) { background: var(--primary-lt); }
-.daily-body button:disabled { background: #9aabb8; cursor: not-allowed; }
+.quest-desc { font-size: .82rem; color: var(--muted); margin-bottom: .4rem; }
+.quest-reward { font-size: .82rem; font-weight: 600; }
 
 /* ── FACTORY ──────────────────────────────────── */
 .factory-layout {

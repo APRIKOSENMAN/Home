@@ -1,0 +1,20 @@
+{
+  "quest_001": {
+    "type": "daily",
+    "reward": { "gold": 50 },
+    "fulfill_condition": { "type": "spin_wheel", "count": 1 },
+    "show_condition": { "type": "always" }
+  },
+  "quest_002": {
+    "type": "daily",
+    "reward": { "gold": 100 },
+    "fulfill_condition": { "type": "sell_item", "count": 3 },
+    "show_condition": { "type": "always" }
+  },
+  "quest_003": {
+    "type": "daily",
+    "reward": { "item": "item_002", "qty": 2 },
+    "fulfill_condition": { "type": "post_message", "count": 1 },
+    "show_condition": { "type": "always" }
+  }
+}

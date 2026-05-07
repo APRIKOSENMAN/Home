@@ -4,7 +4,7 @@ import { updateCharCount, checkPublishable } from './utils.js';
 import { currentUser, setCurrentUser } from './state.js';
 import { registerRenderer, openColFilter, closeColFilter, applyColFilter, clearColFilter, clearOneColFilter } from './table-filter.js';
 import { loadLeaderboard, sortLeaderboard, renderLeaderboard } from './leaderboard.js';
-import { loadDaily, claimDaily, stopDailyTimer } from './daily.js';
+import { loadQuests } from './quests.js';
 import { loadProfile, deletePost, updateProfileStats, handleSearch } from './profile.js';
 import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoardView, sortPostsTable, renderPostsTable, renderPosts, vote } from './board.js';
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
@@ -116,7 +116,6 @@ function handleRoute() {
   const hash = window.location.hash || '#board';
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   stopBoardRefresh();
-  stopDailyTimer();
   closeColFilter();
   closeBuildingPanel();
   document.getElementById('sub-header')?.classList.add('hidden');
@@ -144,10 +143,10 @@ function handleRoute() {
     document.querySelector('[href="#factory"]').classList.add('active');
     showView('factory');
     loadFactory();
-  } else if (hash === '#daily') {
-    document.querySelector('[href="#daily"]').classList.add('active');
-    showView('daily');
-    loadDaily();
+  } else if (hash === '#quests') {
+    document.querySelector('[href="#quests"]').classList.add('active');
+    showView('quests');
+    loadQuests();
   } else if (hash === '#trade') {
     document.querySelector('[href="#trade"]').classList.add('active');
     showView('trade');
@@ -244,8 +243,6 @@ Object.assign(window, {
   collectOutput,
   removeBuilding,
   closeBuildingPanel,
-  // daily
-  claimDaily,
   // trade
   tradeBuy,
   tradeSell,

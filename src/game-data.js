@@ -10,14 +10,15 @@ function parseDuration(str) {
 
 export async function getGameData() {
   if (cache) return cache;
-  const [items, buildings, recipes] = await Promise.all([
+  const [items, buildings, recipes, quests] = await Promise.all([
     fetch('/data/items.json').then(r => r.json()),
     fetch('/data/buildings.json').then(r => r.json()),
     fetch('/data/recipes.json').then(r => r.json()),
+    fetch('/data/quests.json').then(r => r.json()),
   ]);
   for (const recipe of Object.values(recipes)) {
     recipe.durationMs = parseDuration(recipe.duration);
   }
-  cache = { items, buildings, recipes };
+  cache = { items, buildings, recipes, quests };
   return cache;
 }

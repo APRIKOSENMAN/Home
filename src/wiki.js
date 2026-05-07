@@ -2,12 +2,13 @@ import { getGameData } from './game-data.js';
 import { t } from './i18n.js';
 
 export async function loadWiki() {
-  const { items, buildings, recipes } = await getGameData();
+  const { items, buildings, recipes, quests } = await getGameData();
   const container = document.getElementById('wiki-container');
   container.innerHTML =
     renderItems(items) +
     renderBuildings(buildings) +
-    renderRecipes(recipes, items, buildings);
+    renderRecipes(recipes, items, buildings) +
+    renderQuests(quests, items);
 }
 
 function renderItems(items) {
@@ -61,6 +62,35 @@ function renderRecipes(recipes, items, buildings) {
     <div class="panel-header">REZEPTE</div>
     <table class="trade-table">
       <thead><tr><th>GEBÄUDE</th><th>ROHSTOFFE</th><th>ERGEBNIS</th><th>DAUER</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderQuests(quests, items) {
+  function rewardText(reward) {
+    if (reward.gold) return `${reward.gold} 💰`;
+    if (reward.item) {
+      const icon = items[reward.item]?.icon ?? '';
+      const name = t('items.' + reward.item + '.name');
+      return `${icon} ${name} ×${reward.qty}`;
+    }
+    return '?';
+  }
+  const rows = Object.entries(quests).map(([id, q]) => {
+    const name = t('quests.' + id + '.name');
+    const desc = t('quests.' + id + '.description');
+    return `<tr>
+      <td>${name}</td>
+      <td>${q.type.toUpperCase()}</td>
+      <td>${desc}</td>
+      <td>${rewardText(q.reward)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel" style="margin-top:.5rem">
+    <div class="panel-header">QUESTS</div>
+    <table class="trade-table">
+      <thead><tr><th>NAME</th><th>TYP</th><th>AUFGABE</th><th>BELOHNUNG</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
