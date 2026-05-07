@@ -1,5 +1,8 @@
 {
   "material_001": {
-    "icon": "🥇"
+    "icon": "🥇",
+    "buy_price": 100,
+    "sell_price": 50,
+    "tradable": true
   }
 }

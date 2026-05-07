@@ -57,6 +57,7 @@
         <a href="#wheel"       class="nav-link">WHEEL</a>
         <a href="#factory"     class="nav-link">FACTORY</a>
         <a href="#daily"       class="nav-link">DAILY</a>
+        <a href="#trade"       class="nav-link">HANDEL</a>
       </nav>
       <div class="header-right">
         <div class="vol-control">
@@ -340,6 +341,19 @@
             <button id="daily-claim-btn" onclick="claimDaily()" disabled>&#8987; LÄDT...</button>
           </div>
           <p class="error" id="daily-error" style="padding:.5rem 1rem"></p>
+        </div>
+      </div>
+
+      <!-- Handel -->
+      <div id="view-trade" class="view hidden">
+        <div class="panel">
+          <div class="panel-header" id="trade-trader-name">HÄNDLER</div>
+          <div class="wheel-gold-row" style="padding:.6rem 1rem">
+            <span class="wheel-gold-label">DEIN GOLD</span>
+            <span class="wheel-gold-val" id="trade-gold">–</span>
+          </div>
+          <div id="trade-table-container" style="overflow-x:auto"></div>
+          <p class="error" id="trade-error" style="padding:.5rem 1rem"></p>
         </div>
       </div>
 
