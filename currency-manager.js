@@ -4,7 +4,7 @@
  * Ensures atomicity, consistency, and auditability
  */
 
-const CURRENCIES = require('../data/currencies.json').currencies;
+const CURRENCIES = require('./data/currencies.json').currencies;
 const CURRENCY_MAP = Object.fromEntries(CURRENCIES.map(c => [c.id, c]));
 
 /**
