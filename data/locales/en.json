@@ -1,4 +1,13 @@
 {
   "items.material_001.name": "Gold Bar",
+  "items.material_002.name": "Stone",
+  "items.material_003.name": "Window",
+  "items.material_004.name": "Soap",
+  "items.material_005.name": "Brick",
+  "items.material_006.name": "Oil Barrel",
+  "items.material_007.name": "Bolt",
+  "items.material_008.name": "Gear",
+  "items.material_900.name": "Ticket",
+  "items.material_901.name": "Gemstone",
   "buildings.building_001.name": "Gold Smelter"
 }

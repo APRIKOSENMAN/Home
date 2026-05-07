@@ -1,4 +1,13 @@
 {
   "items.material_001.name": "Goldbarren",
+  "items.material_002.name": "Stein",
+  "items.material_003.name": "Fenster",
+  "items.material_004.name": "Seife",
+  "items.material_005.name": "Ziegel",
+  "items.material_006.name": "Ölfaß",
+  "items.material_007.name": "Schraube",
+  "items.material_008.name": "Zahnrad",
+  "items.material_900.name": "Ticket",
+  "items.material_901.name": "Edelstein",
   "buildings.building_001.name": "Goldbarrengießerei"
 }
