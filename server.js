@@ -131,6 +131,51 @@ async function initDb() {
   await pool.query(`UPDATE unplaced_buildings SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
   await pool.query(`UPDATE city_buildings     SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
   await pool.query(`UPDATE storage_items SET item_type = 'material_001' WHERE item_type = 'goldbarren'`);
+
+  // Trade tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS traders (
+      id           SERIAL PRIMARY KEY,
+      trader_id    TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL,
+      description  TEXT,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS trader_inventory (
+      id        SERIAL PRIMARY KEY,
+      trader_id TEXT NOT NULL REFERENCES traders(trader_id),
+      item_type TEXT NOT NULL,
+      stock     INT  NOT NULL DEFAULT 0,
+      UNIQUE (trader_id, item_type)
+    );
+    CREATE TABLE IF NOT EXISTS trade_log (
+      id             SERIAL PRIMARY KEY,
+      username       TEXT NOT NULL,
+      trader_id      TEXT NOT NULL,
+      item_type      TEXT NOT NULL,
+      direction      TEXT NOT NULL CHECK (direction IN ('buy','sell')),
+      quantity       INT  NOT NULL,
+      price_per_unit INT  NOT NULL,
+      total_price    INT  NOT NULL,
+      timestamp      TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  // Seed market_trader (idempotent)
+  await pool.query(`
+    INSERT INTO traders (trader_id, display_name, description)
+    VALUES ('market_trader', 'Markt-Händler', 'Handelt mit allen verfügbaren Waren')
+    ON CONFLICT (trader_id) DO NOTHING
+  `);
+  const ITEMS = require('./data/items.json');
+  for (const [itemType, def] of Object.entries(ITEMS)) {
+    if (!def.tradable) continue;
+    await pool.query(`
+      INSERT INTO trader_inventory (trader_id, item_type, stock)
+      VALUES ('market_trader', $1, 999999)
+      ON CONFLICT (trader_id, item_type) DO NOTHING
+    `, [itemType]);
+  }
 }
 
 app.use(express.json());
