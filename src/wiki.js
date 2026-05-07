@@ -3,12 +3,37 @@ import { t } from './i18n.js';
 
 export async function loadWiki() {
   const { items, buildings, recipes, quests } = await getGameData();
+  const currencies = (await import('../data/currencies.json')).default.currencies;
   const container = document.getElementById('wiki-container');
   container.innerHTML =
+    renderCurrencies(currencies) +
     renderItems(items) +
     renderBuildings(buildings) +
     renderRecipes(recipes, items, buildings) +
     renderQuests(quests, items);
+}
+
+function renderCurrencies(currencies) {
+  const rows = currencies.map(c => {
+    const typeText = c.type === 'soft' ? 'Soft' : 'Hard';
+    const tradeableText = c.tradeable ? 'Ja' : 'Nein';
+    const operationsText = c.operations.join(', ');
+    return `<tr>
+      <td class="trade-icon">${c.icon}</td>
+      <td>${t(c.i18nKey)}</td>
+      <td>${typeText}</td>
+      <td>${tradeableText}</td>
+      <td>${operationsText}</td>
+      <td class="trade-amount">${c.min} - ${c.max >= 999999999 ? '∞' : c.max.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel">
+    <div class="panel-header">WÄHRUNGEN</div>
+    <table class="trade-table">
+      <thead><tr><th></th><th>NAME</th><th>TYP</th><th>TAUSCHBAR</th><th>OPERATIONEN</th><th>GRENZEN</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 function renderItems(items) {

@@ -11,11 +11,13 @@ import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBu
 import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
 import { loadTrade, tradeBuy, tradeSell, updateGoldDisplays } from './trade.js';
 import { loadWiki } from './wiki.js';
+import { loadFinance, sortTransactionLog, renderTransactionLog } from './finance.js';
 
 // ── Register renderers (avoids circular deps in table-filter.js) ──
 registerRenderer('lb', renderLeaderboard);
 registerRenderer('pt', renderPostsTable);
 registerRenderer('sl', renderWheelLog);
+registerRenderer('tl', renderTransactionLog);
 
 // ── Auth ─────────────────────────────────────────
 function showRegister() {
@@ -143,6 +145,10 @@ function handleRoute() {
     document.querySelector('[href="#factory"]').classList.add('active');
     showView('factory');
     loadFactory();
+  } else if (hash === '#finance') {
+    document.querySelector('[href="#finance"]').classList.add('active');
+    showView('finance');
+    loadFinance();
   } else if (hash === '#quests') {
     document.querySelector('[href="#quests"]').classList.add('active');
     showView('quests');
@@ -247,6 +253,8 @@ Object.assign(window, {
   tradeBuy,
   tradeSell,
   updateGoldDisplays,
+  // finance
+  sortTransactionLog,
 });
 
 // ── Init ─────────────────────────────────────────

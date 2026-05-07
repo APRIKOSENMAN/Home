@@ -951,3 +951,34 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .trade-buy-btn:disabled, .trade-sell-btn:disabled {
   color: var(--muted); border-color: var(--border-lt); cursor: not-allowed;
 }
+
+/* ── FINANCE ──────────────────────────────────── */
+.wallet-display {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  flex-wrap: wrap;
+}
+
+.currency-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: var(--gold-bg);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  padding: .5rem .75rem;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.currency-item .currency-icon {
+  font-size: 1.2rem;
+}
+
+.currency-item .currency-amount {
+  font-size: 1rem;
+}
+
+.log-positive { color: var(--like); }
+.log-negative { color: var(--dislike); }

@@ -102,6 +102,17 @@ Hier sind alle wiederkehrenden visuellen Bausteine der Website beschrieben. Dies
 
 ---
 
+### Währungsanzeige (Currency Display)
+**Zweck:** Mehrere Währungen nebeneinander anzeigen, z.B. im Tab-Knopf oder Wallet-Übersicht.
+
+**Aussehen:** Währungs-Icons mit Beträgen nebeneinander, durch kleine Abstände getrennt. Beispiel: `🪙 1000 💎 50 ✨ 0`. Icons sind 16px hoch, Beträge in normaler Schriftgröße.
+
+**Mobile vs. Desktop:** Gleich, aber auf sehr kleinen Bildschirmen können Beträge abgekürzt werden (z.B. "1K" statt "1000").
+
+**Wann verwenden:** Im Tab-Knopf für Finance-Tab, in Wallet-Anzeigen, oder überall wo mehrere Währungen kompakt dargestellt werden sollen.
+
+---
+
 ### Icon-Lösch-Button
 **Zweck:** Einen eigenen Beitrag löschen.
 

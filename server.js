@@ -304,6 +304,27 @@ app.post('/api/transaction', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/user/transactions
+ * Returns transaction history for the current user
+ */
+app.get('/api/user/transactions', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT action, delta_json as delta, reason, created_at as "createdAt"
+       FROM currency_transactions
+       WHERE username = $1
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      [req.session.username]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('GET /api/user/transactions error:', error);
+    res.status(500).json({ error: 'Fehler beim Laden der Transaktionen' });
+  }
+});
+
 // ── Posts ─────────────────────────────────────────
 
 app.get('/api/posts', requireAuth, async (req, res) => {
