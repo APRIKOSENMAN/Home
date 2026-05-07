@@ -8,6 +8,7 @@ const path           = require('path');
 
 const BUILDINGS = require('./data/buildings.json');
 const RECIPES   = require('./data/recipes.json');
+const ITEMS     = require('./data/items.json');
 
 function parseDuration(str) {
   if (typeof str === 'number') return str;
@@ -167,7 +168,6 @@ async function initDb() {
     VALUES ('market_trader', 'Markt-Händler', 'Handelt mit allen verfügbaren Waren')
     ON CONFLICT (trader_id) DO NOTHING
   `);
-  const ITEMS = require('./data/items.json');
   for (const [itemType, def] of Object.entries(ITEMS)) {
     if (!def.tradable) continue;
     await pool.query(`
