@@ -628,6 +628,167 @@ app.get('/api/wheel/log', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
+// ── Trade ─────────────────────────────────────────
+
+const LOCALES = require('./data/locales/en.json');
+
+app.get('/api/trade/offers/:trader_id', requireAuth, async (req, res) => {
+  const { trader_id } = req.params;
+  const { rows: trader } = await pool.query(
+    'SELECT trader_id, display_name, description FROM traders WHERE trader_id=$1',
+    [trader_id]
+  );
+  if (!trader[0]) return res.status(404).json({ error: 'Händler nicht gefunden' });
+
+  const { rows: inv } = await pool.query(
+    'SELECT item_type, stock FROM trader_inventory WHERE trader_id=$1',
+    [trader_id]
+  );
+
+  const offers = inv
+    .filter(row => ITEMS[row.item_type]?.tradable)
+    .map(row => {
+      const def = ITEMS[row.item_type];
+      return {
+        item_type:    row.item_type,
+        display_name: LOCALES[`items.${row.item_type}.name`] ?? row.item_type,
+        icon:         def.icon,
+        buy_price:    def.buy_price,
+        sell_price:   def.sell_price,
+        stock:        row.stock,
+      };
+    });
+
+  res.json({ trader: trader[0], offers });
+});
+
+app.post('/api/trade/buy', requireAuth, async (req, res) => {
+  const username            = req.session.username;
+  const { trader_id, item_type, quantity } = req.body;
+
+  if (!trader_id || !item_type || typeof quantity !== 'number' || quantity < 1 || !Number.isInteger(quantity))
+    return res.status(400).json({ error: 'Ungültige Anfrage' });
+
+  const def = ITEMS[item_type];
+  if (!def || !def.tradable)
+    return res.status(400).json({ error: 'Item nicht handelbar' });
+
+  const totalPrice = def.buy_price * quantity;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: inv } = await client.query(
+      'SELECT stock FROM trader_inventory WHERE trader_id=$1 AND item_type=$2 FOR UPDATE',
+      [trader_id, item_type]
+    );
+    if (!inv[0] || inv[0].stock < quantity)
+      throw new Error('Händler hat nicht genug Vorrat');
+
+    const { rows: user } = await client.query(
+      'SELECT gold FROM users WHERE username=$1 FOR UPDATE',
+      [username]
+    );
+    if (user[0].gold < totalPrice)
+      throw new Error(`Nicht genug Gold (${totalPrice} benötigt, ${user[0].gold} vorhanden)`);
+
+    await client.query('UPDATE users SET gold=gold-$1 WHERE username=$2', [totalPrice, username]);
+    await client.query(
+      'UPDATE trader_inventory SET stock=stock-$1 WHERE trader_id=$2 AND item_type=$3',
+      [quantity, trader_id, item_type]
+    );
+    await client.query(
+      `INSERT INTO storage_items (username,item_type,quantity) VALUES ($1,$2,$3)
+       ON CONFLICT (username,item_type) DO UPDATE SET quantity=storage_items.quantity+$3`,
+      [username, item_type, quantity]
+    );
+    await client.query(
+      `INSERT INTO trade_log (username,trader_id,item_type,direction,quantity,price_per_unit,total_price)
+       VALUES ($1,$2,$3,'buy',$4,$5,$6)`,
+      [username, trader_id, item_type, quantity, def.buy_price, totalPrice]
+    );
+
+    await client.query('COMMIT');
+
+    const { rows: updated } = await pool.query(
+      'SELECT gold FROM users WHERE username=$1', [username]
+    );
+    const { rows: items } = await pool.query(
+      'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+    );
+    res.json({ ok: true, gold: updated[0].gold, items });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/trade/sell', requireAuth, async (req, res) => {
+  const username            = req.session.username;
+  const { trader_id, item_type, quantity } = req.body;
+
+  if (!trader_id || !item_type || typeof quantity !== 'number' || quantity < 1 || !Number.isInteger(quantity))
+    return res.status(400).json({ error: 'Ungültige Anfrage' });
+
+  const def = ITEMS[item_type];
+  if (!def || !def.tradable)
+    return res.status(400).json({ error: 'Item nicht handelbar' });
+
+  const totalPrice = def.sell_price * quantity;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: playerInv } = await client.query(
+      'SELECT quantity FROM storage_items WHERE username=$1 AND item_type=$2 FOR UPDATE',
+      [username, item_type]
+    );
+    if (!playerInv[0] || playerInv[0].quantity < quantity)
+      throw new Error('Nicht genug Items zum Verkaufen');
+
+    const newQty = playerInv[0].quantity - quantity;
+    if (newQty === 0) {
+      await client.query(
+        'DELETE FROM storage_items WHERE username=$1 AND item_type=$2',
+        [username, item_type]
+      );
+    } else {
+      await client.query(
+        'UPDATE storage_items SET quantity=$1 WHERE username=$2 AND item_type=$3',
+        [newQty, username, item_type]
+      );
+    }
+
+    await client.query('UPDATE users SET gold=gold+$1 WHERE username=$2', [totalPrice, username]);
+    await client.query(
+      'UPDATE trader_inventory SET stock=stock+$1 WHERE trader_id=$2 AND item_type=$3',
+      [quantity, trader_id, item_type]
+    );
+    await client.query(
+      `INSERT INTO trade_log (username,trader_id,item_type,direction,quantity,price_per_unit,total_price)
+       VALUES ($1,$2,$3,'sell',$4,$5,$6)`,
+      [username, trader_id, item_type, quantity, def.sell_price, totalPrice]
+    );
+
+    await client.query('COMMIT');
+
+    const { rows: updated } = await pool.query(
+      'SELECT gold FROM users WHERE username=$1', [username]
+    );
+    const { rows: items } = await pool.query(
+      'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+    );
+    res.json({ ok: true, gold: updated[0].gold, items });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 initDb()
