@@ -10,6 +10,7 @@ import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoa
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
 import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
 import { loadTrade, tradeBuy, tradeSell, updateGoldDisplays } from './trade.js';
+import { loadWiki } from './wiki.js';
 
 // ── Register renderers (avoids circular deps in table-filter.js) ──
 registerRenderer('lb', renderLeaderboard);
@@ -151,6 +152,10 @@ function handleRoute() {
     document.querySelector('[href="#trade"]').classList.add('active');
     showView('trade');
     loadTrade();
+  } else if (hash === '#wiki') {
+    document.querySelector('[href="#wiki"]').classList.add('active');
+    showView('wiki');
+    loadWiki();
   }
 }
 
