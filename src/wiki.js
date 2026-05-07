@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 
 export async function loadWiki() {
   const { items, buildings, recipes, quests } = await getGameData();
-  const currencies = (await import('../data/currencies.json')).default.currencies;
+  const currencies = await fetch('/data/currencies.json').then(r => r.json()).then(d => d.currencies);
   const container = document.getElementById('wiki-container');
   container.innerHTML =
     renderCurrencies(currencies) +

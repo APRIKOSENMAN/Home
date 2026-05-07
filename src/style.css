@@ -112,10 +112,25 @@ header {
   padding: .55rem 1.2rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   position: sticky; top: 0; z-index: 10;
   border-bottom: 2px solid #0d1a28;
+  position: relative;
+}
+
+nav { display: flex; gap: .2rem; }
+
+.finance-tab {
+  position: absolute;
+  left: 60%;
+  transform: translateX(-50%);
+}
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .search-box {
