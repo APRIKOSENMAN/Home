@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { loadLocale } from './i18n.js';
 import { updateCharCount, checkPublishable } from './utils.js';
 import { currentUser, setCurrentUser } from './state.js';
 import { registerRenderer, openColFilter, closeColFilter, applyColFilter, clearColFilter, clearOneColFilter } from './table-filter.js';
@@ -239,6 +240,7 @@ Object.assign(window, {
 
 // ── Init ─────────────────────────────────────────
 (async () => {
+  await loadLocale('de');
   const data = await api('GET', '/api/me');
   if (data.user) { setCurrentUser(data.user); showApp(data.user); }
 })();

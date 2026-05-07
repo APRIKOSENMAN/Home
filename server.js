@@ -6,6 +6,25 @@ const { Pool }       = require('pg');
 const { randomUUID } = require('crypto');
 const path           = require('path');
 
+const BUILDINGS = require('./data/buildings.json');
+const RECIPES   = require('./data/recipes.json');
+
+function parseDuration(str) {
+  if (typeof str === 'number') return str;
+  const match = str.match(/^(\d+)(ms|s|m|h)$/);
+  if (!match) return 0;
+  const units = { ms: 1, s: 1000, m: 60000, h: 3600000 };
+  return parseInt(match[1]) * units[match[2]];
+}
+
+function getBuildingRecipe(type) {
+  const building = BUILDINGS[type];
+  if (!building) return null;
+  const recipe = RECIPES[building.recipe];
+  if (!recipe) return null;
+  return { ...recipe, durationMs: parseDuration(recipe.duration) };
+}
+
 // ── Wheel helpers ─────────────────────────────────
 function mulberry32(seed) {
   seed = seed >>> 0;
@@ -108,6 +127,10 @@ async function initDb() {
       PRIMARY KEY (username, item_type)
     );
   `);
+  // Migrate old German IDs to English placeholder IDs
+  await pool.query(`UPDATE unplaced_buildings SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
+  await pool.query(`UPDATE city_buildings     SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
+  await pool.query(`UPDATE storage_items SET item_type = 'material_001' WHERE item_type = 'goldbarren'`);
 }
 
 app.use(express.json());
@@ -427,13 +450,6 @@ app.post('/api/daily/claim', requireAuth, async (req, res) => {
 
 // ── Factory ───────────────────────────────────────
 
-const BUILDING_DEFS_SRV = {
-  goldbarren_giesserei: { width: 2, height: 3 }
-};
-const RECIPE_DEFS_SRV = {
-  goldbarren_giesserei: { goldCost: 10, durationMs: 10 * 60 * 1000, outputItem: 'goldbarren', outputQty: 1 }
-};
-
 app.get('/api/factory', requireAuth, async (req, res) => {
   const username = req.session.username;
   const { rows: ex1 } = await pool.query('SELECT 1 FROM unplaced_buildings WHERE username=$1 LIMIT 1', [username]);
@@ -441,7 +457,7 @@ app.get('/api/factory', requireAuth, async (req, res) => {
   if (!ex1.length && !ex2.length) {
     await pool.query(
       'INSERT INTO unplaced_buildings (username,type,quantity) VALUES ($1,$2,5) ON CONFLICT DO NOTHING',
-      [username, 'goldbarren_giesserei']
+      [username, 'building_001']
     );
   }
   const { rows: unplaced }  = await pool.query('SELECT type, quantity FROM unplaced_buildings WHERE username=$1 AND quantity>0', [username]);
@@ -459,7 +475,7 @@ app.get('/api/factory', requireAuth, async (req, res) => {
 app.post('/api/factory/place', requireAuth, async (req, res) => {
   const username = req.session.username;
   const { type, x, y } = req.body;
-  const def = BUILDING_DEFS_SRV[type];
+  const def = BUILDINGS[type];
   if (!def) return res.status(400).json({ error: 'Unbekanntes Gebäude' });
   const { rows: u } = await pool.query('SELECT quantity FROM unplaced_buildings WHERE username=$1 AND type=$2', [username, type]);
   if (!u[0] || u[0].quantity < 1) return res.status(400).json({ error: 'Nicht im Storage' });
@@ -467,7 +483,8 @@ app.post('/api/factory/place', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Außerhalb des Grids' });
   const { rows: placed } = await pool.query('SELECT type, x, y FROM city_buildings WHERE username=$1', [username]);
   for (const b of placed) {
-    const bd = BUILDING_DEFS_SRV[b.type];
+    const bd = BUILDINGS[b.type];
+    if (!bd) continue;
     if (x < b.x + bd.width && x + def.width > b.x && y < b.y + bd.height && y + def.height > b.y)
       return res.status(400).json({ error: 'Überlappung' });
   }
@@ -505,7 +522,7 @@ app.get('/api/factory/building/:id', requireAuth, async (req, res) => {
   const b = rows[0];
   let job = null;
   if (b.jobId) {
-    const recipe  = RECIPE_DEFS_SRV[b.type];
+    const recipe  = getBuildingRecipe(b.type);
     const elapsed = Date.now() - new Date(b.jobStarted).getTime();
     if (elapsed >= recipe.durationMs && !b.jobCompleted) {
       await pool.query('UPDATE building_jobs SET completed=TRUE WHERE id=$1', [b.jobId]);
@@ -525,11 +542,12 @@ app.post('/api/factory/building/:id/start', requireAuth, async (req, res) => {
     'SELECT cb.type, u.gold FROM city_buildings cb JOIN users u ON u.username=cb.username WHERE cb.id=$1 AND cb.username=$2',
     [id, username]);
   if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
-  const recipe = RECIPE_DEFS_SRV[rows[0].type];
-  if (rows[0].gold < recipe.goldCost) return res.status(400).json({ error: `Nicht genug Gold (${recipe.goldCost} benötigt)` });
+  const recipe = getBuildingRecipe(rows[0].type);
+  const goldCost = recipe.inputs.find(i => i.type === 'gold')?.qty ?? 0;
+  if (rows[0].gold < goldCost) return res.status(400).json({ error: `Nicht genug Gold (${goldCost} benötigt)` });
   const { rows: active } = await pool.query('SELECT id FROM building_jobs WHERE building_id=$1', [id]);
   if (active.length) return res.status(400).json({ error: 'Job läuft bereits oder Output ausstehend' });
-  await pool.query('UPDATE users SET gold=gold-$1 WHERE username=$2', [recipe.goldCost, username]);
+  await pool.query('UPDATE users SET gold=gold-$1 WHERE username=$2', [goldCost, username]);
   await pool.query('INSERT INTO building_jobs (building_id) VALUES ($1)', [id]);
   const { rows: u } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
   res.json({ ok: true, gold: u[0].gold });
@@ -540,7 +558,8 @@ app.post('/api/factory/building/:id/collect', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
   const { rows } = await pool.query('SELECT type FROM city_buildings WHERE id=$1 AND username=$2', [id, username]);
   if (!rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
-  const recipe = RECIPE_DEFS_SRV[rows[0].type];
+  const recipe = getBuildingRecipe(rows[0].type);
+  const output = recipe.outputs[0];
   const { rows: jobs } = await pool.query('SELECT id, started_at, completed FROM building_jobs WHERE building_id=$1', [id]);
   if (!jobs.length) return res.status(400).json({ error: 'Kein Job' });
   const elapsed = Date.now() - new Date(jobs[0].started_at).getTime();
@@ -549,7 +568,7 @@ app.post('/api/factory/building/:id/collect', requireAuth, async (req, res) => {
   await pool.query('DELETE FROM building_jobs WHERE building_id=$1', [id]);
   await pool.query(
     'INSERT INTO storage_items (username,item_type,quantity) VALUES ($1,$2,$3) ON CONFLICT (username,item_type) DO UPDATE SET quantity=storage_items.quantity+$3',
-    [username, recipe.outputItem, recipe.outputQty]
+    [username, output.item, output.qty]
   );
   const { rows: items } = await pool.query('SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]);
   res.json({ ok: true, items });

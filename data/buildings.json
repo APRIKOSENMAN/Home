@@ -1,0 +1,10 @@
+{
+  "building_001": {
+    "width": 2,
+    "height": 3,
+    "color": "#b8860b",
+    "borderColor": "#8b6914",
+    "icon": "🏭",
+    "recipe": "recipe_001"
+  }
+}

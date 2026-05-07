@@ -1,21 +1,20 @@
 import { api } from './api.js';
+import { getGameData } from './game-data.js';
+import { t } from './i18n.js';
 
-const BUILDING_DEFS = {
-  goldbarren_giesserei: { name: 'Goldbarrengießerei', width: 2, height: 3, color: '#b8860b', border: '#8b6914', icon: '🏭' }
-};
-const RECIPE_DEFS = {
-  goldbarren_giesserei: { inputLabel: '10 💰 Gold', durationMs: 10 * 60 * 1000, outputLabel: '1 🥇 Goldbarren' }
-};
-const ITEM_DEFS = { goldbarren: { name: 'Goldbarren', icon: '🥇' } };
 const CELL = 24;
 
 let factoryData       = null;
+let gameData          = null;
 let dragBuildingType  = null;
 let activeBuildingId  = null;
 let buildingPollTimer = null;
 
 export async function loadFactory() {
-  factoryData = await api('GET', '/api/factory');
+  [gameData, factoryData] = await Promise.all([
+    getGameData(),
+    api('GET', '/api/factory'),
+  ]);
   renderFactory();
 }
 
@@ -30,10 +29,10 @@ export function renderStoragePanel() {
   if (bEl) {
     bEl.innerHTML = factoryData.unplaced.length
       ? factoryData.unplaced.map(b => {
-          const d = BUILDING_DEFS[b.type]; if (!d) return '';
+          const d = gameData.buildings[b.type]; if (!d) return '';
           return `<div class="storage-building" draggable="true" ondragstart="startBuildingDrag(event,'${b.type}')">
             <span class="sb-icon">${d.icon}</span>
-            <span class="sb-info"><b>${d.name}</b><br><small>${d.width}×${d.height} Felder</small></span>
+            <span class="sb-info"><b>${t('buildings.' + b.type + '.name')}</b><br><small>${d.width}×${d.height} Felder</small></span>
             <span class="sb-qty">×${b.quantity}</span>
           </div>`;
         }).join('')
@@ -42,8 +41,8 @@ export function renderStoragePanel() {
   if (iEl) {
     iEl.innerHTML = factoryData.items.length
       ? factoryData.items.map(it => {
-          const d = ITEM_DEFS[it.itemType] || { name: it.itemType, icon: '📦' };
-          return `<div class="storage-item-row"><span>${d.icon} ${d.name}</span><span class="col-gold">×${it.quantity}</span></div>`;
+          const d = gameData.items[it.itemType] || { icon: '📦' };
+          return `<div class="storage-item-row"><span>${d.icon} ${t('items.' + it.itemType + '.name')}</span><span class="col-gold">×${it.quantity}</span></div>`;
         }).join('')
       : '<p class="no-posts" style="padding:.4rem .8rem;font-size:.75rem">Leer</p>';
   }
@@ -65,13 +64,13 @@ export function renderCityGrid() {
     }
   }
   factoryData.buildings.forEach(b => {
-    const d = BUILDING_DEFS[b.type]; if (!d) return;
+    const d = gameData.buildings[b.type]; if (!d) return;
     const el = document.createElement('div');
     el.className = 'placed-building';
     Object.assign(el.style, {
       left: b.x * CELL + 'px', top: b.y * CELL + 'px',
       width: d.width * CELL + 'px', height: d.height * CELL + 'px',
-      background: d.color, borderColor: d.border
+      background: d.color, borderColor: d.borderColor
     });
     el.innerHTML = `<span class="pb-icon">${d.icon}</span>`;
     if (b.jobId) {
@@ -92,7 +91,7 @@ export function startBuildingDrag(e, type) {
 export function highlightDrop(x, y) {
   clearDropHighlight();
   if (!dragBuildingType) return;
-  const d = BUILDING_DEFS[dragBuildingType];
+  const d = gameData.buildings[dragBuildingType];
   for (let dy = 0; dy < d.height; dy++)
     for (let dx = 0; dx < d.width; dx++) {
       const c = document.querySelector(`.city-cell[data-x="${x+dx}"][data-y="${y+dy}"]`);
@@ -119,38 +118,48 @@ export async function openBuildingPanel(id) {
   activeBuildingId = id;
   const data = await api('GET', `/api/factory/building/${id}`);
   if (data.error) return;
-  const d  = BUILDING_DEFS[data.type];
-  const rc = RECIPE_DEFS[data.type];
+
+  const building = gameData.buildings[data.type];
+  const recipe   = gameData.recipes[building.recipe];
+  const input    = recipe.inputs[0];
+  const output   = recipe.outputs[0];
+
+  const inputItem  = input.type === 'gold'
+    ? `${input.qty} 💰 Gold`
+    : `${input.qty} ${gameData.items[input.type]?.icon ?? ''} ${t('items.' + input.type + '.name')}`;
+  const outputItem = `${output.qty} ${gameData.items[output.item]?.icon ?? ''} ${t('items.' + output.item + '.name')}`;
+
   let jobHtml = '';
   if (!data.job) {
     jobHtml = `<div class="recipe-row">
-        <div class="recipe-slot">📥 ${rc.inputLabel}</div>
-        <div class="recipe-arrow">→ 10 min →</div>
-        <div class="recipe-slot">📤 ${rc.outputLabel}</div></div>
+        <div class="recipe-slot">📥 ${inputItem}</div>
+        <div class="recipe-arrow">→ ${recipe.duration} →</div>
+        <div class="recipe-slot">📤 ${outputItem}</div></div>
       <div class="bp-actions">
         <small class="bp-gold">Gold: ${data.gold} 💰</small>
-        <button onclick="startRecipe(${id})">&#9654; STARTEN (−10 Gold)</button>
+        <button onclick="startRecipe(${id})">&#9654; STARTEN (−${input.qty} Gold)</button>
       </div>`;
   } else if (data.job.completed) {
     jobHtml = `<div class="recipe-row">
-        <div class="recipe-slot done">✓ ${rc.inputLabel}</div>
+        <div class="recipe-slot done">✓ ${inputItem}</div>
         <div class="recipe-arrow">→</div>
-        <div class="recipe-slot ready">✅ ${rc.outputLabel}</div></div>
+        <div class="recipe-slot ready">✅ ${outputItem}</div></div>
       <div class="bp-actions"><button onclick="collectOutput(${id})">&#128230; EINSAMMELN</button></div>`;
   } else {
     const pct = Math.round(data.job.progress * 100);
     const rem = Math.round(data.job.remainingMs / 1000);
     const ts  = rem >= 60 ? `${Math.floor(rem/60)}m ${rem%60}s` : `${rem}s`;
     jobHtml = `<div class="recipe-row">
-        <div class="recipe-slot done">✓ ${rc.inputLabel}</div>
+        <div class="recipe-slot done">✓ ${inputItem}</div>
         <div class="recipe-arrow">→</div>
-        <div class="recipe-slot">${rc.outputLabel}</div></div>
+        <div class="recipe-slot">${outputItem}</div></div>
       <div class="bp-progress-wrap"><div class="bp-progress-bar" style="width:${pct}%"></div></div>
       <div class="bp-progress-label">${pct}% · noch ${ts}</div>
       <div class="bp-actions"><button disabled>&#8987; ${ts}</button></div>`;
   }
+
   document.getElementById('building-panel-content').innerHTML = `
-    <div class="bp-title"><span>${d.icon} ${d.name}</span>
+    <div class="bp-title"><span>${building.icon} ${t('buildings.' + data.type + '.name')}</span>
       <button class="bp-remove" onclick="removeBuilding(${id})" title="Abbauen">&#128465;</button></div>
     ${jobHtml}
     <p class="error" id="bp-error"></p>`;
