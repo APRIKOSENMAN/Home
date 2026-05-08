@@ -971,6 +971,28 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .trade-buy-btn:disabled, .trade-sell-btn:disabled {
   color: var(--muted); border-color: var(--border-lt); cursor: not-allowed;
 }
+.trade-buy-btn, .trade-sell-btn { user-select: none; -webkit-user-select: none; }
+.trade-expired { opacity: 0.4; pointer-events: none; }
+
+.trade-session-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem 1rem; border-bottom: 1px solid var(--border-lt);
+}
+.trade-session-status { font-size: .82rem; color: var(--muted); }
+.trade-session-status.active { color: var(--like); font-weight: 700; }
+.trade-gen-btn {
+  padding: .4rem 1rem; background: var(--primary); color: #fff; border: none;
+  border-radius: var(--radius); font-size: .75rem; font-weight: 700;
+  letter-spacing: .6px; cursor: pointer; transition: background .15s;
+}
+.trade-gen-btn:hover:not(:disabled) { background: var(--primary-lt); }
+.trade-gen-btn:disabled { background: #9aabb8; cursor: not-allowed; }
+.trade-feedback {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .45rem 1rem; font-size: .82rem; margin-top: .5rem;
+}
+.trade-last-action { font-weight: 600; }
+.trade-sync-status { color: var(--dislike); font-size: .75rem; }
 
 /* ── FINANCE ──────────────────────────────────── */
 .wallet-display {

@@ -2,71 +2,67 @@
   "item_001": {
     "type": "good_item",
     "icon": "🪵",
-    "sell_price": 50,
-    "buy_price": 100,
+    "base_price": 80,
+    "base_quantity": 300,
     "tradable": true
   },
   "item_002": {
     "type": "good_item",
     "icon": "🪨",
-    "sell_price": 40,
-    "buy_price": 80,
+    "base_price": 20,
+    "base_quantity": 500,
     "tradable": true
   },
   "item_003": {
     "type": "good_item",
     "icon": "🪟",
-    "sell_price": 30,
-    "buy_price": 60,
+    "base_price": 60,
+    "base_quantity": 200,
     "tradable": true
   },
   "item_004": {
     "type": "good_item",
     "icon": "🧼",
-    "sell_price": 200,
-    "buy_price": 400,
+    "base_price": 150,
+    "base_quantity": 150,
     "tradable": true
   },
   "item_005": {
     "type": "good_item",
     "icon": "🧱",
-    "sell_price": 10,
-    "buy_price": 20,
+    "base_price": 15,
+    "base_quantity": 600,
     "tradable": true
   },
   "item_006": {
     "type": "good_item",
     "icon": "🛢️",
-    "sell_price": 15,
-    "buy_price": 30,
+    "base_price": 40,
+    "base_quantity": 250,
     "tradable": true
   },
   "item_007": {
     "type": "good_item",
     "icon": "🔩",
-    "sell_price": 25,
-    "buy_price": 50,
+    "base_price": 30,
+    "base_quantity": 400,
     "tradable": true
   },
   "item_008": {
     "type": "good_item",
     "icon": "⚙️",
-    "sell_price": 35,
-    "buy_price": 70,
+    "base_price": 50,
+    "base_quantity": 350,
     "tradable": true
   },
   "item_900": {
     "type": "special_item",
     "icon": "🎟️",
-    "sell_price": 45,
-    "buy_price": 90,
     "tradable": false
   },
   "item_901": {
     "type": "special_item",
     "icon": "💎",
-    "sell_price": 55,
-    "buy_price": 110,
     "tradable": false
   }
 }
