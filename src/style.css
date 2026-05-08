@@ -96,6 +96,12 @@ body { font-family: var(--font); background: var(--bg); min-height: 100vh; color
 }
 .btn-quick:hover { background: #7c3aad !important; }
 
+.btn-test {
+  background: #b45309 !important;
+  letter-spacing: .5px;
+}
+.btn-test:hover { background: #d97706 !important; }
+
 .quick-hint { font-size: .75rem; color: var(--muted); text-align: center; margin-top: -.2rem; }
 
 .divider { border-top: 1px solid var(--border-lt); margin: .2rem 0; }

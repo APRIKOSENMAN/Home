@@ -10,5 +10,8 @@ echo  Oeffne im Browser:  http://localhost:3000
 echo  Server stoppen:     Strg + C druecken
 echo.
 
-start "" http://localhost:3000
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000 " ^| findstr LISTENING 2^>nul') do (
+  taskkill /PID %%a /F >nul 2>&1
+)
+
 npm run dev

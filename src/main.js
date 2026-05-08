@@ -54,6 +54,13 @@ async function registerAndLogin() {
   showApp(login.username);
 }
 
+async function loginAsTestUser() {
+  const data = await api('POST', '/api/login-test');
+  if (data.error) { document.getElementById('reg-error').textContent = data.error; return; }
+  setCurrentUser(data.username);
+  showApp(data.username);
+}
+
 async function quickRegister() {
   const id  = String(Math.floor(10000000 + Math.random() * 90000000));
   const err = document.getElementById('reg-error');
@@ -220,6 +227,7 @@ Object.assign(window, {
   register,
   registerAndLogin,
   quickRegister,
+  loginAsTestUser,
   toggleUserMenu,
   // profile
   handleSearch,

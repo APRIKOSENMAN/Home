@@ -293,6 +293,23 @@ app.post('/api/login', async (req, res) => {
   res.json({ ok: true, username: user.username });
 });
 
+app.post('/api/login-test', async (req, res) => {
+  const username = 'testuser';
+  const { rows } = await pool.query('SELECT username FROM users WHERE username=$1', [username]);
+  if (!rows[0]) {
+    const hash = await bcrypt.hash('testuser', 10);
+    await pool.query('INSERT INTO users (username, password, gold) VALUES ($1, $2, 100000)', [username, hash]);
+    for (const itemType of Object.keys(ITEMS)) {
+      await pool.query(
+        'INSERT INTO storage_items (username, item_type, quantity) VALUES ($1, $2, 1000) ON CONFLICT DO NOTHING',
+        [username, itemType]
+      );
+    }
+  }
+  req.session.username = username;
+  res.json({ ok: true, username });
+});
+
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ ok: true }); });
 app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }));
 // ── Version ───────────────────────────────────
