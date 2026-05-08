@@ -2,17 +2,19 @@ import { api } from './api.js';
 import { calculateSellPrice, calculateBuyPrice } from '../shared/trade-pricing.js';
 
 // ── Session state ──────────────────────────────────
-let _session   = null;
-let _stocks    = {};   // { item_type: current_stock } — local optimistic
-let _inventory = {};   // { item_type: quantity }     — local optimistic
-let _gold      = 0;
-let _items     = [];   // item defs with base_price, base_quantity
-let _config    = null; // pricing config from server
-let _pending   = [];   // transactions pending next sync
-let _syncNum   = 0;
-let _syncTimer = null;
-let _holdTimer = null;
-let _balanceCfg = null;
+let _session        = null;
+let _stocks         = {};
+let _inventory      = {};
+let _gold           = 0;
+let _items          = [];
+let _config         = null;
+let _pending        = [];
+let _syncNum        = 0;
+let _syncTimer      = null;
+let _holdTimer      = null;
+let _holdDelayTimer = null;
+let _countdownTimer = null;
+let _balanceCfg     = null;
 
 async function loadBalanceCfg() {
   if (_balanceCfg) return;
@@ -30,9 +32,11 @@ export async function loadTrade() {
 export async function tradeGenerateSession() {
   const btn = document.getElementById('trade-gen-btn');
   if (btn) btn.disabled = true;
+  stopCountdown();
   await loadBalanceCfg();
   const data = await api('POST', '/api/trade/session/generate');
-  if (data.error) { if (btn) btn.disabled = false; return; }
+  if (btn) btn.disabled = false;
+  if (data.error) return;
   applySession(data);
   renderAll();
 }
@@ -49,6 +53,7 @@ function applySession(data) {
   (data.player_inventory || []).forEach(i => { _inventory[i.itemType] = i.quantity; });
   _gold = data.player_gold;
   startSyncTimer();
+  startCountdown();
 }
 
 // ── Price helpers ──────────────────────────────────
@@ -67,11 +72,11 @@ function executeTrade(itemType, direction) {
   const stock = _stocks[itemType] ?? 0;
   const owned = _inventory[itemType] ?? 0;
 
-  if (direction === 'sell' && owned < 1)        { stopHold(); return; }
-  if (direction === 'buy'  && stock < 1)        { stopHold(); return; }
+  if (direction === 'sell' && owned < 1)    { stopHold(); return; }
+  if (direction === 'buy'  && stock < 1)    { stopHold(); return; }
 
   const price = direction === 'sell' ? sellPx(item) : buyPx(item);
-  if (direction === 'buy' && _gold < price)     { stopHold(); return; }
+  if (direction === 'buy' && _gold < price) { stopHold(); return; }
 
   const stockBefore = stock;
   if (direction === 'sell') {
@@ -95,14 +100,17 @@ function executeTrade(itemType, direction) {
 // ── Hold-down ──────────────────────────────────────
 function startHold(itemType, direction) {
   executeTrade(itemType, direction);
-  _holdTimer = setInterval(
-    () => executeTrade(itemType, direction),
-    _balanceCfg?.session?.fire_rate_ms ?? 50
-  );
+  _holdDelayTimer = setTimeout(() => {
+    _holdTimer = setInterval(
+      () => executeTrade(itemType, direction),
+      _balanceCfg?.session?.fire_rate_ms ?? 50
+    );
+  }, 300);
 }
 
 function stopHold() {
-  if (_holdTimer) { clearInterval(_holdTimer); _holdTimer = null; }
+  if (_holdDelayTimer) { clearTimeout(_holdDelayTimer);  _holdDelayTimer = null; }
+  if (_holdTimer)      { clearInterval(_holdTimer);      _holdTimer      = null; }
   if (_pending.length > 0) doSync();
 }
 
@@ -139,20 +147,45 @@ async function doSync() {
   }
 }
 
-function handleExpired() {
-  stopSyncTimer();
-  _session = null;
-  const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) { statusEl.textContent = 'Session abgelaufen'; statusEl.className = 'trade-session-status'; }
-  const btn = document.getElementById('trade-gen-btn');
-  if (btn) btn.disabled = false;
-  document.getElementById('trade-table-container').innerHTML = '';
+// ── Countdown ─────────────────────────────────────
+function startCountdown() {
+  stopCountdown();
+  _countdownTimer = setInterval(tickCountdown, 1000);
+  tickCountdown();
 }
 
-// Called on route navigation away — syncs pending, keeps session open
+function stopCountdown() {
+  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+}
+
+function tickCountdown() {
+  if (!_session) { stopCountdown(); return; }
+  const remaining = new Date(_session.expires_at) - Date.now();
+  if (remaining <= 0) { stopCountdown(); handleExpired(); return; }
+  const totalSecs = Math.ceil(remaining / 1000);
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  const statusEl = document.getElementById('trade-session-status');
+  if (statusEl) {
+    statusEl.textContent = `Händler aktiv ${m}:${String(s).padStart(2, '0')}`;
+    statusEl.className   = 'trade-session-status active';
+  }
+}
+
+function handleExpired() {
+  stopSyncTimer();
+  stopCountdown();
+  _session = null;
+  const statusEl = document.getElementById('trade-session-status');
+  if (statusEl) { statusEl.textContent = 'Händler abgelaufen'; statusEl.className = 'trade-session-status'; }
+  document.getElementById('trade-table-container')?.classList.add('trade-expired');
+}
+
+// Called on route navigation away
 export function leaveTrade() {
   stopHold();
   stopSyncTimer();
+  stopCountdown();
   if (_session && _pending.length > 0) {
     fetch('/api/trade/session/sync', {
       method: 'POST',
@@ -164,37 +197,24 @@ export function leaveTrade() {
   }
 }
 
-// visibilitychange: sync when tab goes hidden
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') leaveTrade();
 });
 
 // ── Render ─────────────────────────────────────────
 function renderNoSession() {
-  updateSessionHeader(false);
+  const statusEl = document.getElementById('trade-session-status');
+  if (statusEl) { statusEl.textContent = 'Kein aktiver Händler'; statusEl.className = 'trade-session-status'; }
   document.getElementById('trade-table-container').innerHTML = '';
 }
 
 function renderAll() {
-  updateSessionHeader(true);
+  const statusEl = document.getElementById('trade-session-status');
+  if (statusEl) statusEl.className = 'trade-session-status active';
+  const container = document.getElementById('trade-table-container');
+  if (container) container.classList.remove('trade-expired');
   renderTable();
   updateGoldDisplays(_gold);
-}
-
-function updateSessionHeader(active) {
-  const statusEl = document.getElementById('trade-session-status');
-  const btn      = document.getElementById('trade-gen-btn');
-  if (!statusEl) return;
-  if (active && _session) {
-    const d = new Date(_session.expires_at);
-    statusEl.textContent = `Händler aktiv bis ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-    statusEl.className   = 'trade-session-status active';
-    if (btn) btn.disabled = true;
-  } else {
-    statusEl.textContent = 'Kein aktiver Händler';
-    statusEl.className   = 'trade-session-status';
-    if (btn) btn.disabled = false;
-  }
 }
 
 function renderTable() {
@@ -203,8 +223,7 @@ function renderTable() {
   container.innerHTML = `<div class="panel" style="overflow-x:auto;margin-top:.5rem">
     <table class="trade-table" id="trade-item-table">
       <thead><tr>
-        <th></th><th>ITEM</th><th>BESITZ</th><th>VORRAT</th>
-        <th>VERKAUF</th><th>KAUF</th><th></th><th></th>
+        <th></th><th>ITEM</th><th>BESITZ</th><th>VERKAUFEN</th><th>KAUFEN</th><th>VORRAT</th>
       </tr></thead>
       <tbody>${_items.map(renderRow).join('')}</tbody>
     </table>
@@ -213,19 +232,17 @@ function renderTable() {
 }
 
 function renderRow(item) {
-  const stock  = _stocks[item.item_type] ?? 0;
-  const owned  = _inventory[item.item_type] ?? 0;
-  const sp     = sellPx(item);
-  const bp     = buyPx(item);
+  const stock = _stocks[item.item_type] ?? 0;
+  const owned = _inventory[item.item_type] ?? 0;
+  const sp    = sellPx(item);
+  const bp    = buyPx(item);
   return `<tr id="trade-row-${item.item_type}">
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
     <td class="trade-amount" id="trade-owned-${item.item_type}">${owned}</td>
+    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
+    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
     <td class="trade-amount" id="trade-stock-${item.item_type}">${stock}</td>
-    <td class="trade-amount" id="trade-spx-${item.item_type}">${sp} 💰</td>
-    <td class="trade-amount" id="trade-bpx-${item.item_type}">${bp} 💰</td>
-    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>VERKAUFEN</button></td>
-    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>KAUFEN</button></td>
   </tr>`;
 }
 
@@ -237,18 +254,17 @@ function updateRow(itemType) {
   const sp    = sellPx(item);
   const bp    = buyPx(item);
 
-  const el = id => document.getElementById(id);
-  if (el(`trade-owned-${itemType}`)) el(`trade-owned-${itemType}`).textContent = owned;
-  if (el(`trade-stock-${itemType}`)) el(`trade-stock-${itemType}`).textContent = stock;
-  if (el(`trade-spx-${itemType}`))   el(`trade-spx-${itemType}`).textContent   = `${sp} 💰`;
-  if (el(`trade-bpx-${itemType}`))   el(`trade-bpx-${itemType}`).textContent   = `${bp} 💰`;
+  const owned_el = document.getElementById(`trade-owned-${itemType}`);
+  const stock_el = document.getElementById(`trade-stock-${itemType}`);
+  if (owned_el) owned_el.textContent = owned;
+  if (stock_el) stock_el.textContent = stock;
 
-  const row = el(`trade-row-${itemType}`);
+  const row = document.getElementById(`trade-row-${itemType}`);
   if (!row) return;
   const sellBtn = row.querySelector('[data-dir="sell"]');
   const buyBtn  = row.querySelector('[data-dir="buy"]');
-  if (sellBtn) sellBtn.disabled = owned < 1;
-  if (buyBtn)  buyBtn.disabled  = stock < 1 || _gold < bp;
+  if (sellBtn) { sellBtn.textContent = `${sp} 💰`; sellBtn.disabled = owned < 1; }
+  if (buyBtn)  { buyBtn.textContent  = `${bp} 💰`; buyBtn.disabled  = stock < 1 || _gold < bp; }
 }
 
 function attachHoldListeners() {

@@ -1189,12 +1189,6 @@ function checkSyncRateLimit(username) {
 // 2.1 Generate / resume session
 app.post('/api/trade/session/generate', requireAuth, async (req, res) => {
   const username = req.session.username;
-  const { rows: existing } = await pool.query(
-    `SELECT * FROM trade_sessions WHERE username=$1 AND status='active' AND expires_at > NOW() LIMIT 1`,
-    [username]
-  );
-  if (existing[0]) return res.json(await buildSessionResponse(existing[0], username));
-
   await pool.query(
     `UPDATE trade_sessions SET status='expired' WHERE username=$1 AND status='active'`,
     [username]

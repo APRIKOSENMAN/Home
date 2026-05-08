@@ -1,6 +1,6 @@
 {
   "session": {
-    "duration_minutes": 10,
+    "duration_minutes": 1,
     "sync_interval_seconds": 2,
     "fire_rate_ms": 50
   },

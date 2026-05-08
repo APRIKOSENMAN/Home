@@ -972,6 +972,7 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
   color: var(--muted); border-color: var(--border-lt); cursor: not-allowed;
 }
 .trade-buy-btn, .trade-sell-btn { user-select: none; -webkit-user-select: none; }
+.trade-expired { opacity: 0.4; pointer-events: none; }
 
 .trade-session-bar {
   display: flex; align-items: center; justify-content: space-between;
