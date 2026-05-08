@@ -797,7 +797,9 @@ app.get('/api/wheel/log', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-// ── Trade ─────────────────────────────────────────
+// ── Trade (legacy static market – no longer actively used) ────────────────────
+// trade_log and traders tables are kept for historical data.
+// New system: /api/trade/session/* below.
 
 const LOCALES = require('./data/locales/en.json');
 
@@ -966,8 +968,323 @@ app.post('/api/trade/sell', requireAuth, async (req, res) => {
   }
 });
 
+// ── Dynamic Trade Sessions ────────────────────────
+
+function gaussianRandom(mean, stddev) {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  const z  = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return mean + z * stddev;
+}
+
+function generateSessionStocks() {
+  const { std_factor, min_multiplier, max_multiplier } = TRADE_BALANCE.gaussian;
+  const stocks = {};
+  for (const [itemType, item] of Object.entries(ITEMS)) {
+    if (!item.tradable) continue;
+    const mean   = item.base_quantity;
+    const raw    = gaussianRandom(mean, mean * std_factor);
+    stocks[itemType] = Math.round(Math.max(mean * min_multiplier, Math.min(mean * max_multiplier, raw)));
+  }
+  return stocks;
+}
+
+async function buildSessionResponse(sessionRow, username) {
+  const { rows: stockRows } = await pool.query(
+    'SELECT item_type, initial_stock, current_stock FROM trade_session_stocks WHERE session_id=$1',
+    [sessionRow.session_id]
+  );
+  const sessionStocks = {};
+  stockRows.forEach(s => { sessionStocks[s.item_type] = s.current_stock; });
+
+  const prices = calculateSessionPrices(ITEMS, sessionStocks, TRADE_BALANCE.pricing);
+  const items  = stockRows.map(s => {
+    const def = ITEMS[s.item_type];
+    return {
+      item_type:     s.item_type,
+      display_name:  LOCALES[`items.${s.item_type}.name`] ?? s.item_type,
+      icon:          def.icon,
+      initial_stock: s.initial_stock,
+      current_stock: s.current_stock,
+      sell_price:    prices[s.item_type].sell_price,
+      buy_price:     prices[s.item_type].buy_price,
+      base_price:    def.base_price,
+      base_quantity: def.base_quantity,
+    };
+  });
+
+  const { rows: [userRow] } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
+  const { rows: invRows }   = await pool.query(
+    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+  );
+  return {
+    session_id:       sessionRow.session_id,
+    expires_at:       sessionRow.expires_at,
+    items,
+    config:           TRADE_BALANCE.pricing,
+    player_gold:      userRow?.gold ?? 0,
+    player_inventory: invRows,
+  };
+}
+
+// Core sync logic shared by /sync and /close
+async function performSync(username, session_id, sync_number, transactions) {
+  const { rows: [session] } = await pool.query(
+    `SELECT * FROM trade_sessions WHERE session_id=$1 AND username=$2`,
+    [session_id, username]
+  );
+  if (!session) throw Object.assign(new Error('Session nicht gefunden'), { status: 404 });
+  if (session.status !== 'active') throw Object.assign(new Error('Session abgelaufen'), { status: 400, expired: true });
+  if (new Date(session.expires_at) < new Date()) {
+    await pool.query(`UPDATE trade_sessions SET status='expired' WHERE session_id=$1`, [session_id]);
+    throw Object.assign(new Error('Session abgelaufen'), { status: 400, expired: true });
+  }
+
+  // Idempotency: already processed this sync_number?
+  const { rows: dup } = await pool.query(
+    'SELECT id FROM trade_session_log WHERE session_id=$1 AND sync_number=$2',
+    [session_id, sync_number]
+  );
+  if (dup[0]) return { success: true, already_processed: true };
+
+  const { rows: stockRows } = await pool.query(
+    'SELECT item_type, current_stock FROM trade_session_stocks WHERE session_id=$1',
+    [session_id]
+  );
+  const serverStocks = {};
+  stockRows.forEach(s => { serverStocks[s.item_type] = s.current_stock; });
+
+  const { rows: invRows } = await pool.query(
+    'SELECT item_type, quantity FROM storage_items WHERE username=$1', [username]
+  );
+  const playerInventory = {};
+  invRows.forEach(r => { playerInventory[r.item_type] = r.quantity; });
+
+  const config      = TRADE_BALANCE.pricing;
+  let totalGoldDelta = 0;
+  const stockDeltas  = {};
+  const invDeltas    = {};
+  const clientCalc   = {};
+  const serverCalc   = {};
+
+  for (const tx of transactions) {
+    const { item_type, direction, quantity, client_price_per_unit } = tx;
+    const def = ITEMS[item_type];
+    if (!def || !def.tradable) throw Object.assign(new Error(`Item nicht handelbar: ${item_type}`), { status: 400 });
+    if (!Number.isInteger(quantity) || quantity < 1) throw Object.assign(new Error('Ungültige Menge'), { status: 400 });
+
+    const stockBefore = (serverStocks[item_type] ?? 0) + (stockDeltas[item_type] ?? 0);
+    const serverPrice = direction === 'sell'
+      ? calculateSellPrice(def.base_price, def.base_quantity, stockBefore, config)
+      : calculateBuyPrice(def.base_price, def.base_quantity, stockBefore, config);
+
+    clientCalc[item_type] = (clientCalc[item_type] ?? 0) + (client_price_per_unit ?? serverPrice) * quantity;
+    serverCalc[item_type] = (serverCalc[item_type] ?? 0) + serverPrice * quantity;
+
+    if (direction === 'sell') {
+      const avail = (playerInventory[item_type] ?? 0) + (invDeltas[item_type] ?? 0);
+      if (avail < quantity) throw Object.assign(new Error(`Nicht genug ${item_type}`), { status: 400 });
+      invDeltas[item_type]   = (invDeltas[item_type]   ?? 0) - quantity;
+      stockDeltas[item_type] = (stockDeltas[item_type] ?? 0) + quantity;
+      totalGoldDelta += serverPrice * quantity;
+    } else {
+      if (stockBefore < quantity) throw Object.assign(new Error(`Händler hat nicht genug ${item_type}`), { status: 400 });
+      invDeltas[item_type]   = (invDeltas[item_type]   ?? 0) + quantity;
+      stockDeltas[item_type] = (stockDeltas[item_type] ?? 0) - quantity;
+      totalGoldDelta -= serverPrice * quantity;
+    }
+  }
+
+  const { rows: [userRow] } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
+  if (userRow.gold + totalGoldDelta < 0) throw Object.assign(new Error('Nicht genug Gold'), { status: 400 });
+
+  const clientTotal = Object.values(clientCalc).reduce((a, b) => a + b, 0);
+  const serverTotal = Object.values(serverCalc).reduce((a, b) => a + b, 0);
+  const discrepancy = serverTotal > 0 && Math.abs(clientTotal - serverTotal) / serverTotal > 0.05;
+
+  const pgClient = await pool.connect();
+  try {
+    await pgClient.query('BEGIN');
+
+    for (const [itemType, delta] of Object.entries(stockDeltas)) {
+      await pgClient.query(
+        'UPDATE trade_session_stocks SET current_stock=current_stock+$1 WHERE session_id=$2 AND item_type=$3',
+        [delta, session_id, itemType]
+      );
+    }
+    for (const [itemType, delta] of Object.entries(invDeltas)) {
+      if (delta > 0) {
+        await pgClient.query(
+          `INSERT INTO storage_items (username,item_type,quantity) VALUES ($1,$2,$3)
+           ON CONFLICT (username,item_type) DO UPDATE SET quantity=storage_items.quantity+$3`,
+          [username, itemType, delta]
+        );
+      } else if (delta < 0) {
+        await pgClient.query(
+          'UPDATE storage_items SET quantity=GREATEST(0,quantity+$1) WHERE username=$2 AND item_type=$3',
+          [delta, username, itemType]
+        );
+        await pgClient.query(
+          'DELETE FROM storage_items WHERE username=$1 AND item_type=$2 AND quantity=0',
+          [username, itemType]
+        );
+      }
+    }
+    await pgClient.query('UPDATE users SET gold=gold+$1 WHERE username=$2', [totalGoldDelta, username]);
+    await pgClient.query('UPDATE trade_sessions SET last_sync_at=NOW() WHERE session_id=$1', [session_id]);
+    await pgClient.query(
+      `INSERT INTO trade_session_log
+         (session_id,username,sync_number,items_sold,items_bought,gold_delta,client_calculation,server_calculation,discrepancy)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        session_id, username, sync_number,
+        JSON.stringify(transactions.filter(t => t.direction === 'sell')),
+        JSON.stringify(transactions.filter(t => t.direction === 'buy')),
+        totalGoldDelta,
+        JSON.stringify(clientCalc),
+        JSON.stringify(serverCalc),
+        discrepancy,
+      ]
+    );
+    await pgClient.query('COMMIT');
+  } catch (e) {
+    await pgClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    pgClient.release();
+  }
+
+  const { rows: [updUser] }  = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
+  const { rows: updInv }     = await pool.query(
+    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+  );
+  const { rows: updStocks }  = await pool.query(
+    'SELECT item_type, current_stock FROM trade_session_stocks WHERE session_id=$1', [session_id]
+  );
+  const sessionStocksMap = {};
+  updStocks.forEach(s => { sessionStocksMap[s.item_type] = s.current_stock; });
+
+  return {
+    success:              true,
+    confirmed_gold_delta: totalGoldDelta,
+    player_gold:          updUser.gold,
+    player_inventory:     updInv,
+    session_stocks:       sessionStocksMap,
+    discrepancy,
+    server_correction:    discrepancy ? { note: 'Price recalculated by server' } : null,
+  };
+}
+
+// Rate limiter: max 60 sync requests/minute per user (bots send far more)
+const syncRateLimiter = new Map();
+function checkSyncRateLimit(username) {
+  const now   = Date.now();
+  const entry = syncRateLimiter.get(username);
+  if (!entry || now - entry.windowStart > 60000) {
+    syncRateLimiter.set(username, { count: 1, windowStart: now });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= 60;
+}
+
+// 2.1 Generate / resume session
+app.post('/api/trade/session/generate', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows: existing } = await pool.query(
+    `SELECT * FROM trade_sessions WHERE username=$1 AND status='active' AND expires_at > NOW() LIMIT 1`,
+    [username]
+  );
+  if (existing[0]) return res.json(await buildSessionResponse(existing[0], username));
+
+  await pool.query(
+    `UPDATE trade_sessions SET status='expired' WHERE username=$1 AND status='active'`,
+    [username]
+  );
+
+  const sessionId = randomUUID();
+  const expiresAt = new Date(Date.now() + TRADE_BALANCE.session.duration_minutes * 60 * 1000);
+  const stocks    = generateSessionStocks();
+
+  const pgClient = await pool.connect();
+  try {
+    await pgClient.query('BEGIN');
+    await pgClient.query(
+      `INSERT INTO trade_sessions (username,session_id,expires_at,status) VALUES ($1,$2,$3,'active')`,
+      [username, sessionId, expiresAt]
+    );
+    for (const [itemType, qty] of Object.entries(stocks)) {
+      await pgClient.query(
+        `INSERT INTO trade_session_stocks (session_id,item_type,initial_stock,current_stock) VALUES ($1,$2,$3,$3)`,
+        [sessionId, itemType, qty]
+      );
+    }
+    await pgClient.query('COMMIT');
+  } catch (e) {
+    await pgClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    pgClient.release();
+  }
+
+  const { rows: [newSession] } = await pool.query(
+    'SELECT * FROM trade_sessions WHERE session_id=$1', [sessionId]
+  );
+  res.json(await buildSessionResponse(newSession, username));
+});
+
+// 2.2 Get current active session
+app.get('/api/trade/session/current', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT * FROM trade_sessions WHERE username=$1 AND status='active' AND expires_at > NOW() LIMIT 1`,
+    [req.session.username]
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'Keine aktive Session' });
+  res.json(await buildSessionResponse(rows[0], req.session.username));
+});
+
+// 2.3 Background sync
+app.post('/api/trade/session/sync', requireAuth, async (req, res) => {
+  if (!checkSyncRateLimit(req.session.username))
+    return res.status(429).json({ error: 'Zu viele Sync-Anfragen. Warte kurz.' });
+  const { session_id, sync_number, transactions } = req.body;
+  if (!session_id || typeof sync_number !== 'number' || !Array.isArray(transactions))
+    return res.status(400).json({ error: 'Ungültige Sync-Daten' });
+  try {
+    res.json(await performSync(req.session.username, session_id, sync_number, transactions));
+  } catch (e) {
+    res.status(e.status ?? 400).json({ error: e.message, expired: e.expired ?? false });
+  }
+});
+
+// 2.4 Close session (final sync + mark completed)
+app.post('/api/trade/session/close', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { session_id, sync_number, transactions } = req.body;
+  if (Array.isArray(transactions) && transactions.length > 0) {
+    try { await performSync(username, session_id, sync_number, transactions); }
+    catch (_) { /* ignore errors on close, session is being discarded */ }
+  }
+  await pool.query(
+    `UPDATE trade_sessions SET status='completed' WHERE session_id=$1 AND username=$2`,
+    [session_id, username]
+  );
+  res.json({ success: true });
+});
+
+// 2.5 Expire stale sessions (on startup + every 10 minutes)
+async function expireOldSessions() {
+  await pool.query(
+    `UPDATE trade_sessions SET status='expired' WHERE status='active' AND expires_at < NOW()`
+  );
+}
+
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 initDb()
-  .then(() => app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`)))
+  .then(() => {
+    app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`));
+    expireOldSessions();
+    setInterval(expireOldSessions, 10 * 60 * 1000);
+  })
   .catch(e => { console.error('DB-Fehler:', e.message); process.exit(1); });
