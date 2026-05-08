@@ -4,11 +4,13 @@ const session        = require('express-session');
 const bcrypt         = require('bcryptjs');
 const { Pool }       = require('pg');
 const { randomUUID } = require('crypto');
+const { execSync }   = require('child_process');
 const path           = require('path');
 
 const BUILDINGS = require('./data/buildings.json');
 const RECIPES   = require('./data/recipes.json');
 const ITEMS     = require('./data/items.json');
+const PKG_VERSION = require('./package.json').version;
 const { executeTransaction, getUserState } = require('./currency-manager');
 
 function parseDuration(str) {
@@ -252,7 +254,36 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ ok: true }); });
 app.get('/api/me', (req, res) => res.json({ user: req.session.username || null }));
+// ── Version ───────────────────────────────────
 
+app.get('/api/version', async (req, res) => {
+  try {
+    const version = PKG_VERSION;
+    let commits = [];
+
+    try {
+      // Try to get git log if available
+      const output = execSync('git log --oneline -30 --pretty=format:"%h|%an|%ai|%s"', {
+        cwd: __dirname,
+        encoding: 'utf-8'
+      });
+      
+      commits = output.trim().split('\n').filter(Boolean).map(line => {
+        const [hash, author, date, ...messageParts] = line.split('|');
+        const message = messageParts.join('|');
+        return { hash, message, author, date };
+      });
+    } catch (e) {
+      // Git not available or error - return empty
+      console.log('Git log not available');
+    }
+
+    res.json({ version, commits });
+  } catch (error) {
+    console.error('GET /api/version error:', error);
+    res.status(500).json({ error: 'Fehler beim Abrufen der Version' });
+  }
+});
 // ── Currency System ───────────────────────────────
 
 /**

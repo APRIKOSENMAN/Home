@@ -3,9 +3,18 @@ import { api } from './api.js';
 let versionsData = null;
 
 export async function loadVersions() {
-  const data = await api('GET', '/api/version');
-  versionsData = data;
-  updateVersionTabLabel(data.version);
+  try {
+    const data = await api('GET', '/api/version');
+    versionsData = data;
+  } catch (error) {
+    versionsData = {
+      version: null,
+      commits: [],
+      error: error?.message || 'Fehler beim Laden der Version'
+    };
+  }
+
+  updateVersionTabLabel(versionsData.version);
   renderVersionsPage();
 }
 
@@ -20,26 +29,34 @@ function renderVersionsPage() {
 
 function updateVersionTabLabel(version) {
   const tab = document.getElementById('nav-versions');
-  if (tab) tab.textContent = `V${version}`;
+  if (tab) tab.textContent = `V${version ?? '–'}`;
 }
 
 function renderVersionsPanel(data) {
-  const { version, commits } = data;
+  const { version, commits, error } = data;
+  const rows = Array.isArray(commits) ? commits : [];
 
-  const commitRows = commits.slice(0, 50).map((c, i) => {
-    const date = new Date(c.date).toLocaleString('de-DE');
-    return `<tr>
-      <td class="col-num">${i + 1}</td>
-      <td class="version-hash">${c.hash}</td>
-      <td class="version-msg">${escapeHtml(c.message)}</td>
-      <td class="version-author">${escapeHtml(c.author)}</td>
-      <td class="col-num">${date}</td>
-    </tr>`;
-  }).join('');
+  const commitRows = rows.length
+    ? rows.slice(0, 50).map((c, i) => {
+        const date = c.date ? new Date(c.date).toLocaleString('de-DE') : '–';
+        return `<tr>
+          <td class="col-num">${i + 1}</td>
+          <td class="version-hash">${escapeHtml(c.hash)}</td>
+          <td class="version-msg">${escapeHtml(c.message)}</td>
+          <td class="version-author">${escapeHtml(c.author)}</td>
+          <td class="col-num">${escapeHtml(date)}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td class="no-commits" colspan="5">Keine Commit-Daten verfügbar.</td></tr>`;
+
+  const errorMessage = error
+    ? `<div class="error" style="margin:0 0 1rem;">${escapeHtml(error)}</div>`
+    : '';
 
   return `
     <div class="panel">
-      <div class="panel-header">VERSIONS HISTORY</div>
+      <div class="panel-header">VERSIONS HISTORY ${version ? `(${escapeHtml(version)})` : ''}</div>
+      ${errorMessage}
       <table class="spin-log-table">
         <thead><tr>
           <th><div class="th-inner">#</div></th>
