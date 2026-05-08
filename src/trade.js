@@ -13,11 +13,14 @@ let _items          = [];
 let _config         = null;
 let _pending        = [];
 let _syncNum        = 0;
-let _syncTimer      = null;
-let _holdTimer      = null;
-let _holdDelayTimer = null;
-let _countdownTimer = null;
-let _balanceCfg     = null;
+let _syncTimer         = null;
+let _holdTimer         = null;
+let _holdDelayTimer    = null;
+let _countdownTimer    = null;
+let _balanceCfg        = null;
+let _isTradingActive   = false;
+let _syncInFlight      = false;
+let _syncDebounceTimer = null;
 
 async function loadBalanceCfg() {
   if (_balanceCfg) return;
@@ -48,9 +51,12 @@ function applySession(data) {
   _session   = { session_id: data.session_id, expires_at: data.expires_at };
   _config    = data.config;
   _items     = data.items;
-  _stocks    = {};
-  _pending   = [];
-  _syncNum   = 0;
+  _stocks          = {};
+  _pending         = [];
+  _syncNum         = 0;
+  _isTradingActive = false;
+  _syncInFlight    = false;
+  if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
   data.items.forEach(item => { _stocks[item.item_type] = item.current_stock; });
   _inventory   = {};
   _avgBuyPrice = {};
@@ -108,6 +114,7 @@ function executeTrade(itemType, direction) {
 
 // ── Hold-down ──────────────────────────────────────
 function startHold(itemType, direction) {
+  _isTradingActive = true;
   executeTrade(itemType, direction);
   _holdDelayTimer = setTimeout(() => {
     _holdTimer = setInterval(
@@ -120,22 +127,30 @@ function startHold(itemType, direction) {
 function stopHold() {
   if (_holdDelayTimer) { clearTimeout(_holdDelayTimer);  _holdDelayTimer = null; }
   if (_holdTimer)      { clearInterval(_holdTimer);      _holdTimer      = null; }
-  if (_pending.length > 0) doSync();
+  _isTradingActive = false;
+  if (_pending.length > 0) scheduleSyncDebounced();
+}
+
+function scheduleSyncDebounced() {
+  if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(() => { _syncDebounceTimer = null; doSync(); }, 150);
 }
 
 // ── Background sync ────────────────────────────────
 function startSyncTimer() {
   stopSyncTimer();
   const ms = (_balanceCfg?.session?.sync_interval_seconds ?? 2) * 1000;
-  _syncTimer = setInterval(() => { if (_pending.length > 0) doSync(); }, ms);
+  _syncTimer = setInterval(() => { if (_pending.length > 0 && !_isTradingActive) doSync(); }, ms);
 }
 
 export function stopSyncTimer() {
-  if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
+  if (_syncTimer)         { clearInterval(_syncTimer);        _syncTimer         = null; }
+  if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
 }
 
 async function doSync() {
-  if (!_session || _pending.length === 0) return;
+  if (_syncInFlight || !_session || _pending.length === 0) return;
+  _syncInFlight = true;
   const batch = _pending.splice(0);
   _syncNum++;
   try {
@@ -144,19 +159,26 @@ async function doSync() {
     });
     if (result.expired) { handleExpired(); return; }
     if (result.error)   { _pending.unshift(...batch); showSyncStatus('error'); return; }
-    _gold = result.player_gold;
-    (result.player_inventory || []).forEach(i => {
-      _inventory[i.itemType]   = i.quantity;
-      _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
-      _paidQty[i.itemType]     = i.paidQuantity ?? 0;
-    });
-    Object.entries(result.session_stocks || {}).forEach(([k, v]) => { _stocks[k] = v; });
-    updateGoldDisplays(_gold);
-    _items.forEach(item => updateRow(item.item_type));
+    // Only overwrite optimistic state when the player is not actively trading
+    // and no new transactions have queued up while this request was in-flight.
+    if (!_isTradingActive && _pending.length === 0) {
+      _gold = result.player_gold;
+      (result.player_inventory || []).forEach(i => {
+        _inventory[i.itemType]   = i.quantity;
+        _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
+        _paidQty[i.itemType]     = i.paidQuantity ?? 0;
+      });
+      Object.entries(result.session_stocks || {}).forEach(([k, v]) => { _stocks[k] = v; });
+      updateGoldDisplays(_gold);
+      _items.forEach(item => updateRow(item.item_type));
+    }
     showSyncStatus('ok');
+    if (_pending.length > 0) doSync();
   } catch (_) {
     _pending.unshift(...batch);
     showSyncStatus('error');
+  } finally {
+    _syncInFlight = false;
   }
 }
 
@@ -216,18 +238,18 @@ document.addEventListener('visibilitychange', () => {
 
 // ── Indicator ──────────────────────────────────────
 function _indicatorColor(pos) {
-  // pos=0 → dark green, pos=0.5 → yellow, pos=1 → red  (smooth HSL)
+  // pos=0 → red (left/low stock), pos=0.5 → yellow, pos=1 → green (right/high stock)
   let h, s, l;
   if (pos <= 0.5) {
     const t = pos * 2;
-    h = 120 - 65 * t;
-    s = 65  + 25 * t;
-    l = 30  + 20 * t;
+    h = 0  + 55 * t;
+    s = 70 + 20 * t;
+    l = 42 +  8 * t;
   } else {
     const t = (pos - 0.5) * 2;
-    h = 55  - 55 * t;
-    s = 90  - 20 * t;
-    l = 50  -  8 * t;
+    h = 55 + 65 * t;
+    s = 90 - 25 * t;
+    l = 50 - 20 * t;
   }
   return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
 }
@@ -244,12 +266,6 @@ function updateIndicator(itemType, stock, baseQty) {
   const thumb = document.getElementById(`trade-ind-thumb-${itemType}`);
   if (fill)  { fill.style.width = `${pos * 100}%`; fill.style.backgroundColor = color; }
   if (thumb) { thumb.style.left = `calc(${pos * 100}% - 8px)`; thumb.style.backgroundColor = color; }
-  const row = document.getElementById(`trade-row-${itemType}`);
-  if (!row) return;
-  const sellBtn = row.querySelector('[data-dir="sell"]');
-  const buyBtn  = row.querySelector('[data-dir="buy"]');
-  if (sellBtn) sellBtn.style.backgroundColor = color;
-  if (buyBtn)  buyBtn.style.backgroundColor  = color;
 }
 
 // ── Render ─────────────────────────────────────────
@@ -274,7 +290,8 @@ function renderTable() {
   container.innerHTML = `<div class="panel" style="overflow-x:auto;margin-top:.5rem">
     <table class="trade-table" id="trade-item-table">
       <thead><tr>
-        <th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th><th>${t('ui.trade.col.sell')}</th><th></th><th>${t('ui.trade.col.buy')}</th><th>${t('ui.trade.col.stock')}</th>
+        <th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th><th>${t('ui.trade.col.sell')}</th><th>${t('ui.trade.col.buy')}</th>
+        <th class="stock-th"><div>${t('ui.trade.col.stock')}</div><div class="stock-legend"><span class="legend-low">low</span><div class="legend-grad"></div><span class="legend-high">high</span></div></th>
       </tr></thead>
       <tbody>${_items.map(renderRow).join('')}</tbody>
     </table>
@@ -290,20 +307,19 @@ function renderRow(item) {
   const sp                = sellPx(item);
   const bp                = buyPx(item);
   const { pos, color }    = _indicatorStyle(stock, item.base_quantity);
-  const avgHtml           = paid > 0
-    ? `<div class="trade-avg" id="trade-avg-${item.item_type}">⌀ ${Math.round(avg)} 💰</div>`
-    : `<div class="trade-avg" id="trade-avg-${item.item_type}" style="display:none"></div>`;
   return `<tr id="trade-row-${item.item_type}">
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
-    <td class="trade-amount"><span id="trade-owned-${item.item_type}">${owned}</span>${avgHtml}</td>
-    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''} style="background-color:${color}">${sp} 💰</button></td>
-    <td class="trade-indicator-cell"><div class="trade-indicator">
-      <div class="indicator-track"><div class="indicator-fill" id="trade-ind-fill-${item.item_type}" style="width:${pos*100}%;background-color:${color}"></div></div>
-      <div class="indicator-thumb" id="trade-ind-thumb-${item.item_type}" style="left:calc(${pos*100}% - 8px);background-color:${color}"></div>
-    </div></td>
-    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''} style="background-color:${color}">${bp} 💰</button></td>
-    <td class="trade-amount" id="trade-stock-${item.item_type}">${stock}</td>
+    <td class="trade-amount"><span id="trade-owned-${item.item_type}">${owned}</span><span class="trade-avg" id="trade-avg-${item.item_type}"${paid <= 0 ? ' style="display:none"' : ''}> ⌀ ${Math.round(avg)} 💰</span></td>
+    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
+    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
+    <td class="stock-th trade-amount">
+      <div id="trade-stock-${item.item_type}">${stock}</div>
+      <div class="trade-indicator">
+        <div class="indicator-track"><div class="indicator-fill" id="trade-ind-fill-${item.item_type}" style="width:${pos*100}%;background-color:${color}"></div></div>
+        <div class="indicator-thumb" id="trade-ind-thumb-${item.item_type}" style="left:calc(${pos*100}% - 8px);background-color:${color}"></div>
+      </div>
+    </td>
   </tr>`;
 }
 
