@@ -11,7 +11,7 @@
   <!-- AUTH -->
   <div id="auth-section">
     <div class="card" id="login-box">
-      <div class="card-header">ANMELDEN</div>
+      <div class="card-header" data-i18n="ui.auth.login.header">ANMELDEN</div>
       <div class="card-body">
         <div class="field-wrap">
           <input type="text" id="login-user" placeholder="Benutzername" maxlength="20" oninput="updateCharCount(this)" />
@@ -19,14 +19,14 @@
           <div class="char-bar"><div class="char-fill"></div></div>
         </div>
         <input type="password" id="login-pass" placeholder="Passwort" />
-        <button onclick="login()">EINLOGGEN</button>
+        <button onclick="login()" data-i18n="ui.auth.login.btn">EINLOGGEN</button>
         <p class="error" id="login-error"></p>
-        <p class="switch">Noch kein Konto? <a href="#" onclick="showRegister()">Registrieren</a></p>
+        <p class="switch"><span data-i18n="ui.auth.noaccount">Noch kein Konto?</span> <a href="#" onclick="showRegister()" data-i18n="ui.auth.toregister">Registrieren</a></p>
       </div>
     </div>
 
     <div class="card hidden" id="register-box">
-      <div class="card-header">REGISTRIEREN</div>
+      <div class="card-header" data-i18n="ui.auth.register.header">REGISTRIEREN</div>
       <div class="card-body">
         <div class="field-wrap">
           <input type="text" id="reg-user" placeholder="Benutzername" maxlength="20" oninput="updateCharCount(this)" />
@@ -36,16 +36,16 @@
         <input type="password" id="reg-pass" placeholder="Passwort (min. 6 Zeichen)" />
         <input type="password" id="reg-pass2" placeholder="Passwort wiederholen" />
         <div class="btn-row">
-          <button class="btn-secondary" onclick="register()">REGISTRIEREN</button>
-          <button onclick="registerAndLogin()">REGISTRIEREN &amp; EINLOGGEN</button>
+          <button class="btn-secondary" onclick="register()" data-i18n="ui.auth.register.btn">REGISTRIEREN</button>
+          <button onclick="registerAndLogin()" data-i18n="ui.auth.registerlogin.btn">REGISTRIEREN &amp; EINLOGGEN</button>
         </div>
         <div class="divider"></div>
         <button class="btn-quick" onclick="quickRegister()">&#9889; QUICK REGISTER</button>
-        <p class="quick-hint">Zufälliger 8-stelliger Account — Name = Passwort</p>
+        <p class="quick-hint" data-i18n="ui.auth.quickregister.hint">Zufälliger 8-stelliger Account — Name = Passwort</p>
         <button class="btn-test" onclick="loginAsTestUser()">&#127381; LOGIN AS TEST USER</button>
-        <p class="quick-hint">Gemeinsamer Testaccount &mdash; 100k Gold, 1000&times; alle Items</p>
+        <p class="quick-hint" data-i18n="ui.auth.testuser.hint">Gemeinsamer Testaccount — 100k Gold, 1000× alle Items</p>
         <p class="error" id="reg-error"></p>
-        <p class="switch">Schon registriert? <a href="#" onclick="showLogin()">Anmelden</a></p>
+        <p class="switch"><span data-i18n="ui.auth.hasaccount">Schon registriert?</span> <a href="#" onclick="showLogin()" data-i18n="ui.auth.tologin">Anmelden</a></p>
       </div>
     </div>
   </div>
@@ -55,15 +55,15 @@
     <header>
       <a href="#versions" class="nav-link nav-version" id="nav-versions">V0.000</a>
       <nav>
-        <a href="#board"       class="nav-link">BOARD</a>
-        <a href="#leaderboard" class="nav-link">LEADERBOARD</a>
-        <a href="#wheel"       class="nav-link">WHEEL</a>
-        <a href="#factory"     class="nav-link">FACTORY</a>
-        <a href="#quests"      class="nav-link">QUESTS</a>
-        <a href="#trade"       class="nav-link">HANDEL</a>
-        <a href="#wiki"        class="nav-link">WIKI</a>
+        <a href="#board"       class="nav-link" data-i18n="ui.nav.board">BOARD</a>
+        <a href="#leaderboard" class="nav-link" data-i18n="ui.nav.leaderboard">LEADERBOARD</a>
+        <a href="#wheel"       class="nav-link" data-i18n="ui.nav.wheel">WHEEL</a>
+        <a href="#factory"     class="nav-link" data-i18n="ui.nav.factory">FACTORY</a>
+        <a href="#quests"      class="nav-link" data-i18n="ui.nav.quests">QUESTS</a>
+        <a href="#trade"       class="nav-link" data-i18n="ui.nav.trade">HANDEL</a>
+        <a href="#wiki"        class="nav-link" data-i18n="ui.nav.wiki">WIKI</a>
       </nav>
-      <a href="#finance" class="nav-link finance-tab">FINANCE</a>
+      <a href="#finance" class="nav-link finance-tab" data-i18n="ui.nav.finance">FINANCE</a>
       <div class="header-right">
         <div class="vol-control">
           <svg class="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -85,7 +85,7 @@
           <input type="text" id="search-input" placeholder="Username suchen"
                  onkeydown="handleSearch(event)" autocomplete="off" />
         </div>
-        <button class="logout-btn" onclick="logout()">ABMELDEN</button>
+        <button class="logout-btn" onclick="logout()" data-i18n="ui.auth.logout.btn">ABMELDEN</button>
       </div>
     </div>
 
@@ -94,7 +94,7 @@
       <!-- Board -->
       <div id="view-board" class="view hidden">
         <div class="panel">
-          <div class="panel-header">NEUEN BEITRAG VERFASSEN</div>
+          <div class="panel-header" data-i18n="ui.board.newpost">NEUEN BEITRAG VERFASSEN</div>
           <div class="panel-body write-form">
             <div class="field-wrap">
               <input type="text" id="post-title" placeholder="Titel" maxlength="100"
@@ -109,15 +109,15 @@
               <div class="char-bar"><div class="char-fill"></div></div>
             </div>
             <div class="post-feedback hidden" id="post-feedback"></div>
-            <button id="publish-btn" onclick="submitPost()" disabled class="btn-disabled">VERÖFFENTLICHEN</button>
+            <button id="publish-btn" onclick="submitPost()" disabled class="btn-disabled" data-i18n="ui.board.publish">VERÖFFENTLICHEN</button>
           </div>
         </div>
 
         <div class="board-toolbar">
-          <span class="panel-label" style="margin:0">ALLE BEITRÄGE</span>
+          <span class="panel-label" style="margin:0" data-i18n="ui.board.allposts">ALLE BEITRÄGE</span>
           <div class="view-toggle">
-            <button class="toggle-btn active" id="btn-cards" onclick="setBoardView('cards')">&#9646;&#9646; KARTEN</button>
-            <button class="toggle-btn" id="btn-table" onclick="setBoardView('table')">&#9776; TABELLE</button>
+            <button class="toggle-btn active" id="btn-cards" onclick="setBoardView('cards')">&#9646;&#9646; <span data-i18n="ui.board.cards">KARTEN</span></button>
+            <button class="toggle-btn" id="btn-table" onclick="setBoardView('table')">&#9776; <span data-i18n="ui.board.table">TABELLE</span></button>
           </div>
         </div>
         <div id="posts-container"></div>
@@ -127,21 +127,21 @@
               <tr>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortPostsTable('title')">TITEL <span class="sort-icon" data-col="title" data-table="pt"></span></span>
+                    <span class="sortable" onclick="sortPostsTable('title')"><span data-i18n="ui.board.col.title">TITEL</span> <span class="sort-icon" data-col="title" data-table="pt"></span></span>
                     <button class="col-filter-btn" onclick="openColFilter('title', this, false, 'pt')">&#128269;</button>
                     <button class="col-clear-btn hidden" data-col="title" data-table="pt" onclick="clearOneColFilter('title', 'pt')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortPostsTable('author')">AUTOR <span class="sort-icon" data-col="author" data-table="pt"></span></span>
+                    <span class="sortable" onclick="sortPostsTable('author')"><span data-i18n="ui.board.col.author">AUTOR</span> <span class="sort-icon" data-col="author" data-table="pt"></span></span>
                     <button class="col-filter-btn" onclick="openColFilter('author', this, false, 'pt')">&#128269;</button>
                     <button class="col-clear-btn hidden" data-col="author" data-table="pt" onclick="clearOneColFilter('author', 'pt')">&#10005;</button>
                   </div>
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortPostsTable('created_at')">DATUM <span class="sort-icon" data-col="created_at" data-table="pt"></span></span>
+                    <span class="sortable" onclick="sortPostsTable('created_at')"><span data-i18n="ui.board.col.date">DATUM</span> <span class="sort-icon" data-col="created_at" data-table="pt"></span></span>
                     <button class="col-filter-btn" onclick="openColFilter('created_at', this, false, 'pt')">&#128269;</button>
                     <button class="col-clear-btn hidden" data-col="created_at" data-table="pt" onclick="clearOneColFilter('created_at', 'pt')">&#10005;</button>
                   </div>
@@ -187,7 +187,7 @@
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('postCount')">BEITRÄGE <span class="sort-icon" data-col="postCount" data-table="lb"></span></span>
+                    <span class="sortable" onclick="sortLeaderboard('postCount')"><span data-i18n="ui.lb.col.posts">BEITRÄGE</span> <span class="sort-icon" data-col="postCount" data-table="lb"></span></span>
                     <button class="col-filter-btn" onclick="openColFilter('postCount', this, true, 'lb')">&#128269;</button>
                     <button class="col-clear-btn hidden" data-col="postCount" data-table="lb" onclick="clearOneColFilter('postCount', 'lb')">&#10005;</button>
                   </div>
@@ -222,7 +222,7 @@
                 </th>
                 <th>
                   <div class="th-inner">
-                    <span class="sortable" onclick="sortLeaderboard('bestReward')">&#127882; BEST <span class="sort-icon" data-col="bestReward" data-table="lb"></span></span>
+                    <span class="sortable" onclick="sortLeaderboard('bestReward')">&#127882; <span data-i18n="ui.lb.col.best">BEST</span> <span class="sort-icon" data-col="bestReward" data-table="lb"></span></span>
                     <button class="col-filter-btn" onclick="openColFilter('bestReward', this, true, 'lb')">&#128269;</button>
                     <button class="col-clear-btn hidden" data-col="bestReward" data-table="lb" onclick="clearOneColFilter('bestReward', 'lb')">&#10005;</button>
                   </div>
@@ -238,14 +238,14 @@
       <!-- Wheel -->
       <div id="view-wheel" class="view hidden">
         <div class="panel wheel-panel">
-          <div class="panel-header">WHEEL OF FORTUNE</div>
+          <div class="panel-header" data-i18n="ui.wheel.header">WHEEL OF FORTUNE</div>
           <div class="wheel-body">
             <div class="wheel-stage">
               <canvas id="wheel-canvas" width="480" height="480"></canvas>
             </div>
             <div class="wheel-controls">
               <div class="wheel-gold-row">
-                <span class="wheel-gold-label">DEIN GOLD</span>
+                <span class="wheel-gold-label" data-i18n="ui.wheel.gold">DEIN GOLD</span>
                 <span class="wheel-gold-val" id="wheel-gold">–</span>
               </div>
               <div class="wheel-seed-row" id="wheel-seed-row"></div>
@@ -277,7 +277,7 @@
             </div>
             <div class="stat-cell">
               <div class="stat-val" id="stat-posts">–</div>
-              <div class="stat-key">BEITRÄGE</div>
+              <div class="stat-key" data-i18n="ui.profile.posts">BEITRÄGE</div>
             </div>
             <div class="stat-cell">
               <div class="stat-val likes" id="stat-likes">–</div>
@@ -297,11 +297,11 @@
             </div>
             <div class="stat-cell gold-cell">
               <div class="stat-val gold" id="stat-best">–</div>
-              <div class="stat-key">&#127882; BESTER SPIN</div>
+              <div class="stat-key">&#127882; <span data-i18n="ui.profile.best">BESTER SPIN</span></div>
             </div>
           </div>
         </div>
-        <div class="panel-label">BEITRÄGE</div>
+        <div class="panel-label" data-i18n="ui.profile.posts.section">BEITRÄGE</div>
         <div id="profile-posts-container"></div>
       </div>
 
@@ -310,17 +310,17 @@
         <div class="factory-layout">
           <aside class="factory-sidebar">
             <div class="panel">
-              <div class="panel-header">STORAGE – GEBÄUDE</div>
+              <div class="panel-header" data-i18n="ui.factory.storage.buildings">STORAGE – GEBÄUDE</div>
               <div id="storage-buildings"></div>
             </div>
             <div class="panel" style="margin-top:.5rem">
-              <div class="panel-header">STORAGE – ITEMS</div>
+              <div class="panel-header" data-i18n="ui.factory.storage.items">STORAGE – ITEMS</div>
               <div id="storage-items"></div>
             </div>
           </aside>
           <div class="factory-main-area">
             <div class="panel">
-              <div class="panel-header">CITY</div>
+              <div class="panel-header" data-i18n="ui.factory.city">CITY</div>
               <div class="city-grid-scroll">
                 <div class="city-grid" id="city-grid"></div>
               </div>
@@ -329,14 +329,14 @@
         </div>
         <div id="building-panel" class="building-panel hidden">
           <div id="building-panel-content"></div>
-          <button class="bp-close-btn" onclick="closeBuildingPanel()">&#10005; Schließen</button>
+          <button class="bp-close-btn" onclick="closeBuildingPanel()" data-i18n="ui.factory.close">✕ Schließen</button>
         </div>
       </div>
 
       <!-- Finance -->
       <div id="view-finance" class="view hidden">
         <div class="panel">
-          <div class="panel-header">DEIN WALLET</div>
+          <div class="panel-header" data-i18n="ui.finance.wallet">DEIN WALLET</div>
           <div class="wallet-display" id="wallet-display">
             <!-- Währungen werden hier angezeigt -->
           </div>
@@ -362,13 +362,13 @@
       <!-- Handel -->
       <div id="view-trade" class="view hidden">
         <div class="panel">
-          <div class="panel-header">HÄNDLER</div>
+          <div class="panel-header" data-i18n="ui.trade.header">HÄNDLER</div>
           <div class="trade-session-bar">
-            <span id="trade-session-status" class="trade-session-status">Kein aktiver Händler</span>
+            <span id="trade-session-status" class="trade-session-status" data-i18n="ui.trade.status.none">Kein aktiver Händler</span>
             <span class="wheel-gold-val" id="trade-gold">– 💰</span>
           </div>
           <div class="trade-session-bar" style="border-bottom:none;padding-top:.4rem">
-            <button id="trade-gen-btn" class="trade-gen-btn" onclick="tradeGenerateSession()">HÄNDLER SUCHEN</button>
+            <button id="trade-gen-btn" class="trade-gen-btn" onclick="tradeGenerateSession()" data-i18n="ui.trade.btn.find">HÄNDLER SUCHEN</button>
           </div>
         </div>
         <div id="trade-table-container"></div>
@@ -390,7 +390,7 @@
       </div>
       <input type="text" id="lbf-text" placeholder="Suchen..." oninput="applyColFilter()"
              onkeydown="if(event.key==='Enter'){applyColFilter();closeColFilter()}" />
-      <button class="lbf-clear" onclick="clearColFilter()">&#10005; Filter löschen</button>
+      <button class="lbf-clear" onclick="clearColFilter()" data-i18n="ui.filter.clear">✕ Filter löschen</button>
     </div>
   </div>
 
@@ -401,7 +401,7 @@
   <!-- Post Modal -->
   <div id="post-modal" class="modal-overlay hidden">
     <div class="modal-box">
-      <div class="panel-header">BEITRAG VERFASSEN</div>
+      <div class="panel-header" data-i18n="ui.modal.post.header">BEITRAG VERFASSEN</div>
       <div class="modal-content">
         <div class="modal-wheel-wrap">
           <canvas id="modal-wheel-canvas" width="200" height="200"></canvas>

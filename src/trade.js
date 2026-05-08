@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { t } from './i18n.js';
 import { calculateSellPrice, calculateBuyPrice } from '../shared/trade-pricing.js';
 
 // ── Session state ──────────────────────────────────
@@ -167,7 +168,7 @@ function tickCountdown() {
   const s = totalSecs % 60;
   const statusEl = document.getElementById('trade-session-status');
   if (statusEl) {
-    statusEl.textContent = `Händler aktiv ${m}:${String(s).padStart(2, '0')}`;
+    statusEl.textContent = `${t('ui.trade.status.active')} ${m}:${String(s).padStart(2, '0')}`;
     statusEl.className   = 'trade-session-status active';
   }
 }
@@ -177,7 +178,7 @@ function handleExpired() {
   stopCountdown();
   _session = null;
   const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) { statusEl.textContent = 'Händler abgelaufen'; statusEl.className = 'trade-session-status'; }
+  if (statusEl) { statusEl.textContent = t('ui.trade.status.expired'); statusEl.className = 'trade-session-status'; }
   document.getElementById('trade-table-container')?.classList.add('trade-expired');
 }
 
@@ -242,7 +243,7 @@ function updateIndicator(itemType, stock, baseQty) {
 // ── Render ─────────────────────────────────────────
 function renderNoSession() {
   const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) { statusEl.textContent = 'Kein aktiver Händler'; statusEl.className = 'trade-session-status'; }
+  if (statusEl) { statusEl.textContent = t('ui.trade.status.none'); statusEl.className = 'trade-session-status'; }
   document.getElementById('trade-table-container').innerHTML = '';
 }
 
@@ -261,7 +262,7 @@ function renderTable() {
   container.innerHTML = `<div class="panel" style="overflow-x:auto;margin-top:.5rem">
     <table class="trade-table" id="trade-item-table">
       <thead><tr>
-        <th></th><th>ITEM</th><th>BESITZ</th><th>VERKAUFEN</th><th></th><th>KAUFEN</th><th>VORRAT</th>
+        <th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th><th>${t('ui.trade.col.sell')}</th><th></th><th>${t('ui.trade.col.buy')}</th><th>${t('ui.trade.col.stock')}</th>
       </tr></thead>
       <tbody>${_items.map(renderRow).join('')}</tbody>
     </table>

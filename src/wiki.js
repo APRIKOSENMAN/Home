@@ -15,8 +15,8 @@ export async function loadWiki() {
 
 function renderCurrencies(currencies) {
   const rows = currencies.map(c => {
-    const typeText = c.type === 'soft' ? 'Soft' : 'Hard';
-    const tradeableText = c.tradeable ? 'Ja' : 'Nein';
+    const typeText     = c.type === 'soft' ? t('ui.wiki.val.soft') : t('ui.wiki.val.hard');
+    const tradeableText = c.tradeable ? t('ui.wiki.val.yes') : t('ui.wiki.val.no');
     const operationsText = c.operations.join(', ');
     return `<tr>
       <td class="trade-icon">${c.icon}</td>
@@ -28,9 +28,9 @@ function renderCurrencies(currencies) {
     </tr>`;
   }).join('');
   return `<div class="panel">
-    <div class="panel-header">WÄHRUNGEN</div>
+    <div class="panel-header">${t('ui.wiki.currencies')}</div>
     <table class="trade-table">
-      <thead><tr><th></th><th>NAME</th><th>TYP</th><th>TAUSCHBAR</th><th>OPERATIONEN</th><th>GRENZEN</th></tr></thead>
+      <thead><tr><th></th><th>${t('ui.wiki.col.name')}</th><th>${t('ui.wiki.col.type')}</th><th>${t('ui.wiki.col.tradeable')}</th><th>${t('ui.wiki.col.operations')}</th><th>${t('ui.wiki.col.limits')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -42,9 +42,9 @@ function renderItems(items) {
     <td>${t('items.' + id + '.name')}</td>
   </tr>`).join('');
   return `<div class="panel">
-    <div class="panel-header">ITEMS</div>
+    <div class="panel-header">${t('ui.wiki.items')}</div>
     <table class="trade-table">
-      <thead><tr><th></th><th>NAME</th></tr></thead>
+      <thead><tr><th></th><th>${t('ui.wiki.col.name')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -57,9 +57,9 @@ function renderBuildings(buildings) {
     <td class="trade-amount">${def.width}×${def.height}</td>
   </tr>`).join('');
   return `<div class="panel" style="margin-top:.5rem">
-    <div class="panel-header">GEBÄUDE</div>
+    <div class="panel-header">${t('ui.wiki.buildings')}</div>
     <table class="trade-table">
-      <thead><tr><th></th><th>NAME</th><th>GRÖßE</th></tr></thead>
+      <thead><tr><th></th><th>${t('ui.wiki.col.name')}</th><th>${t('ui.wiki.col.size')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -84,9 +84,9 @@ function renderRecipes(recipes, items, buildings) {
     </tr>`;
   }).join('');
   return `<div class="panel" style="margin-top:.5rem">
-    <div class="panel-header">REZEPTE</div>
+    <div class="panel-header">${t('ui.wiki.recipes')}</div>
     <table class="trade-table">
-      <thead><tr><th>GEBÄUDE</th><th>ROHSTOFFE</th><th>ERGEBNIS</th><th>DAUER</th></tr></thead>
+      <thead><tr><th>${t('ui.wiki.col.building')}</th><th>${t('ui.wiki.col.inputs')}</th><th>${t('ui.wiki.col.output')}</th><th>${t('ui.wiki.col.duration')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -113,9 +113,9 @@ function renderQuests(quests, items) {
     </tr>`;
   }).join('');
   return `<div class="panel" style="margin-top:.5rem">
-    <div class="panel-header">QUESTS</div>
+    <div class="panel-header">${t('ui.wiki.quests')}</div>
     <table class="trade-table">
-      <thead><tr><th>NAME</th><th>TYP</th><th>AUFGABE</th><th>BELOHNUNG</th></tr></thead>
+      <thead><tr><th>${t('ui.wiki.col.name')}</th><th>${t('ui.wiki.col.type')}</th><th>${t('ui.wiki.col.task')}</th><th>${t('ui.wiki.col.reward')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
