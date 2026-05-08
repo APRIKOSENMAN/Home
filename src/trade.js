@@ -201,6 +201,24 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') leaveTrade();
 });
 
+// ── Indicator ──────────────────────────────────────
+function _indicatorStyle(stock, baseQty) {
+  const pos   = Math.max(0, Math.min(1, stock / (2 * baseQty)));
+  const color = pos < 0.35 ? '#dc2626' : pos > 0.65 ? '#1565c0' : '#9ca3af';
+  return { pos, color };
+}
+
+function updateIndicator(itemType, stock, baseQty) {
+  const { pos, color } = _indicatorStyle(stock, baseQty);
+  const fill  = document.getElementById(`trade-ind-fill-${itemType}`);
+  const thumb = document.getElementById(`trade-ind-thumb-${itemType}`);
+  if (!fill || !thumb) return;
+  fill.style.width            = `${pos * 100}%`;
+  fill.style.backgroundColor  = color;
+  thumb.style.left            = `calc(${pos * 100}% - 8px)`;
+  thumb.style.backgroundColor = color;
+}
+
 // ── Render ─────────────────────────────────────────
 function renderNoSession() {
   const statusEl = document.getElementById('trade-session-status');
@@ -223,7 +241,7 @@ function renderTable() {
   container.innerHTML = `<div class="panel" style="overflow-x:auto;margin-top:.5rem">
     <table class="trade-table" id="trade-item-table">
       <thead><tr>
-        <th></th><th>ITEM</th><th>BESITZ</th><th>VERKAUFEN</th><th>KAUFEN</th><th>VORRAT</th>
+        <th></th><th>ITEM</th><th>BESITZ</th><th>VERKAUFEN</th><th></th><th>KAUFEN</th><th>VORRAT</th>
       </tr></thead>
       <tbody>${_items.map(renderRow).join('')}</tbody>
     </table>
@@ -232,15 +250,20 @@ function renderTable() {
 }
 
 function renderRow(item) {
-  const stock = _stocks[item.item_type] ?? 0;
-  const owned = _inventory[item.item_type] ?? 0;
-  const sp    = sellPx(item);
-  const bp    = buyPx(item);
+  const stock             = _stocks[item.item_type] ?? 0;
+  const owned             = _inventory[item.item_type] ?? 0;
+  const sp                = sellPx(item);
+  const bp                = buyPx(item);
+  const { pos, color }    = _indicatorStyle(stock, item.base_quantity);
   return `<tr id="trade-row-${item.item_type}">
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
     <td class="trade-amount" id="trade-owned-${item.item_type}">${owned}</td>
     <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
+    <td class="trade-indicator-cell"><div class="trade-indicator">
+      <div class="indicator-track"><div class="indicator-fill" id="trade-ind-fill-${item.item_type}" style="width:${pos*100}%;background-color:${color}"></div></div>
+      <div class="indicator-thumb" id="trade-ind-thumb-${item.item_type}" style="left:calc(${pos*100}% - 8px);background-color:${color}"></div>
+    </div></td>
     <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
     <td class="trade-amount" id="trade-stock-${item.item_type}">${stock}</td>
   </tr>`;
@@ -265,6 +288,7 @@ function updateRow(itemType) {
   const buyBtn  = row.querySelector('[data-dir="buy"]');
   if (sellBtn) { sellBtn.textContent = `${sp} 💰`; sellBtn.disabled = owned < 1; }
   if (buyBtn)  { buyBtn.textContent  = `${bp} 💰`; buyBtn.disabled  = stock < 1 || _gold < bp; }
+  updateIndicator(itemType, stock, item.base_quantity);
 }
 
 function attachHoldListeners() {

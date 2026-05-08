@@ -980,6 +980,24 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .trade-buy-btn, .trade-sell-btn { user-select: none; -webkit-user-select: none; }
 .trade-expired { opacity: 0.4; pointer-events: none; }
 
+.trade-indicator-cell { width: 90px; min-width: 70px; padding: .4rem .5rem; }
+.trade-indicator { position: relative; height: 16px; pointer-events: none; }
+.indicator-track {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: 0; right: 0; height: 6px;
+  background: var(--border-lt); border-radius: 3px; overflow: hidden;
+}
+.indicator-fill {
+  height: 100%; border-radius: 3px;
+  transition: width .3s ease, background-color .3s ease;
+}
+.indicator-thumb {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  transition: left .3s ease, background-color .3s ease;
+}
+
 .trade-session-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: .55rem 1rem; border-bottom: 1px solid var(--border-lt);
