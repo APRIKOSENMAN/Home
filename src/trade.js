@@ -202,9 +202,26 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ── Indicator ──────────────────────────────────────
+function _indicatorColor(pos) {
+  // pos=0 → dark green, pos=0.5 → yellow, pos=1 → red  (smooth HSL)
+  let h, s, l;
+  if (pos <= 0.5) {
+    const t = pos * 2;
+    h = 120 - 65 * t;
+    s = 65  + 25 * t;
+    l = 30  + 20 * t;
+  } else {
+    const t = (pos - 0.5) * 2;
+    h = 55  - 55 * t;
+    s = 90  - 20 * t;
+    l = 50  -  8 * t;
+  }
+  return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`;
+}
+
 function _indicatorStyle(stock, baseQty) {
   const pos   = Math.max(0, Math.min(1, stock / (2 * baseQty)));
-  const color = pos < 0.35 ? '#dc2626' : pos > 0.65 ? '#1565c0' : '#9ca3af';
+  const color = _indicatorColor(pos);
   return { pos, color };
 }
 
@@ -212,11 +229,14 @@ function updateIndicator(itemType, stock, baseQty) {
   const { pos, color } = _indicatorStyle(stock, baseQty);
   const fill  = document.getElementById(`trade-ind-fill-${itemType}`);
   const thumb = document.getElementById(`trade-ind-thumb-${itemType}`);
-  if (!fill || !thumb) return;
-  fill.style.width            = `${pos * 100}%`;
-  fill.style.backgroundColor  = color;
-  thumb.style.left            = `calc(${pos * 100}% - 8px)`;
-  thumb.style.backgroundColor = color;
+  if (fill)  { fill.style.width = `${pos * 100}%`; fill.style.backgroundColor = color; }
+  if (thumb) { thumb.style.left = `calc(${pos * 100}% - 8px)`; thumb.style.backgroundColor = color; }
+  const row = document.getElementById(`trade-row-${itemType}`);
+  if (!row) return;
+  const sellBtn = row.querySelector('[data-dir="sell"]');
+  const buyBtn  = row.querySelector('[data-dir="buy"]');
+  if (sellBtn) sellBtn.style.backgroundColor = color;
+  if (buyBtn)  buyBtn.style.backgroundColor  = color;
 }
 
 // ── Render ─────────────────────────────────────────
@@ -259,12 +279,12 @@ function renderRow(item) {
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
     <td class="trade-amount" id="trade-owned-${item.item_type}">${owned}</td>
-    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
+    <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''} style="background-color:${color}">${sp} 💰</button></td>
     <td class="trade-indicator-cell"><div class="trade-indicator">
       <div class="indicator-track"><div class="indicator-fill" id="trade-ind-fill-${item.item_type}" style="width:${pos*100}%;background-color:${color}"></div></div>
       <div class="indicator-thumb" id="trade-ind-thumb-${item.item_type}" style="left:calc(${pos*100}% - 8px);background-color:${color}"></div>
     </div></td>
-    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
+    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''} style="background-color:${color}">${bp} 💰</button></td>
     <td class="trade-amount" id="trade-stock-${item.item_type}">${stock}</td>
   </tr>`;
 }
