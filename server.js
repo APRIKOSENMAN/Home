@@ -1,3 +1,4 @@
+require('dotenv').config(); // loads .env locally; no-op in production if file missing
 require('dns').setDefaultResultOrder('ipv4first');
 const express        = require('express');
 const session        = require('express-session');
@@ -247,11 +248,8 @@ async function initDb() {
 }
 
 app.use(express.json());
-// Serve static files directly (index.html + src/ as native ES modules)
-// In development: Vite dev server handles the frontend on port 5173
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname)));
-}
+// Serve static files (index.html, src/, data/, shared/)
+app.use(express.static(path.join(__dirname)));
 app.use(session({
   secret: 'geheim-schluessel-hier-aendern',
   resave: false,
