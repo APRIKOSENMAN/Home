@@ -952,6 +952,7 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .trade-table tbody tr:hover { background: #eef2f7; }
 .trade-icon { font-size: 1.1rem; text-align: center; width: 2rem; }
 .trade-amount { font-family: var(--mono); font-weight: 700; color: var(--primary); }
+.trade-avg    { font-size: .65rem; color: var(--muted, #888); font-family: var(--mono); margin-top: 2px; }
 .trade-buy-btn, .trade-sell-btn {
   width: 82px; height: 30px;
   border: none; border-radius: 999px;

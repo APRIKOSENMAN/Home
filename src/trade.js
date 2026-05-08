@@ -6,6 +6,8 @@ import { calculateSellPrice, calculateBuyPrice } from '../shared/trade-pricing.j
 let _session        = null;
 let _stocks         = {};
 let _inventory      = {};
+let _avgBuyPrice    = {};
+let _paidQty        = {};
 let _gold           = 0;
 let _items          = [];
 let _config         = null;
@@ -50,8 +52,14 @@ function applySession(data) {
   _pending   = [];
   _syncNum   = 0;
   data.items.forEach(item => { _stocks[item.item_type] = item.current_stock; });
-  _inventory = {};
-  (data.player_inventory || []).forEach(i => { _inventory[i.itemType] = i.quantity; });
+  _inventory   = {};
+  _avgBuyPrice = {};
+  _paidQty     = {};
+  (data.player_inventory || []).forEach(i => {
+    _inventory[i.itemType]   = i.quantity;
+    _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
+    _paidQty[i.itemType]     = i.paidQuantity ?? 0;
+  });
   _gold = data.player_gold;
   startSyncTimer();
   startCountdown();
@@ -95,7 +103,7 @@ function executeTrade(itemType, direction) {
 
   updateGoldDisplays(_gold);
   updateRow(itemType);
-  showLastAction(direction, item.display_name, price);
+  showLastAction(direction, item.display_name, price, itemType);
 }
 
 // ── Hold-down ──────────────────────────────────────
@@ -137,7 +145,11 @@ async function doSync() {
     if (result.expired) { handleExpired(); return; }
     if (result.error)   { _pending.unshift(...batch); showSyncStatus('error'); return; }
     _gold = result.player_gold;
-    (result.player_inventory || []).forEach(i => { _inventory[i.itemType] = i.quantity; });
+    (result.player_inventory || []).forEach(i => {
+      _inventory[i.itemType]   = i.quantity;
+      _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
+      _paidQty[i.itemType]     = i.paidQuantity ?? 0;
+    });
     Object.entries(result.session_stocks || {}).forEach(([k, v]) => { _stocks[k] = v; });
     updateGoldDisplays(_gold);
     _items.forEach(item => updateRow(item.item_type));
@@ -273,13 +285,18 @@ function renderTable() {
 function renderRow(item) {
   const stock             = _stocks[item.item_type] ?? 0;
   const owned             = _inventory[item.item_type] ?? 0;
+  const avg               = _avgBuyPrice[item.item_type] ?? 0;
+  const paid              = _paidQty[item.item_type]     ?? 0;
   const sp                = sellPx(item);
   const bp                = buyPx(item);
   const { pos, color }    = _indicatorStyle(stock, item.base_quantity);
+  const avgHtml           = paid > 0
+    ? `<div class="trade-avg" id="trade-avg-${item.item_type}">⌀ ${Math.round(avg)} 💰</div>`
+    : `<div class="trade-avg" id="trade-avg-${item.item_type}" style="display:none"></div>`;
   return `<tr id="trade-row-${item.item_type}">
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
-    <td class="trade-amount" id="trade-owned-${item.item_type}">${owned}</td>
+    <td class="trade-amount"><span id="trade-owned-${item.item_type}">${owned}</span>${avgHtml}</td>
     <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''} style="background-color:${color}">${sp} 💰</button></td>
     <td class="trade-indicator-cell"><div class="trade-indicator">
       <div class="indicator-track"><div class="indicator-fill" id="trade-ind-fill-${item.item_type}" style="width:${pos*100}%;background-color:${color}"></div></div>
@@ -300,8 +317,20 @@ function updateRow(itemType) {
 
   const owned_el = document.getElementById(`trade-owned-${itemType}`);
   const stock_el = document.getElementById(`trade-stock-${itemType}`);
+  const avg_el   = document.getElementById(`trade-avg-${itemType}`);
   if (owned_el) owned_el.textContent = owned;
   if (stock_el) stock_el.textContent = stock;
+  if (avg_el) {
+    const avg  = _avgBuyPrice[itemType] ?? 0;
+    const paid = _paidQty[itemType]     ?? 0;
+    if (paid > 0) {
+      avg_el.textContent    = `⌀ ${Math.round(avg)} 💰`;
+      avg_el.style.display  = '';
+    } else {
+      avg_el.textContent    = '';
+      avg_el.style.display  = 'none';
+    }
+  }
 
   const row = document.getElementById(`trade-row-${itemType}`);
   if (!row) return;
@@ -325,11 +354,20 @@ function attachHoldListeners() {
 
 // ── Feedback ──────────────────────────────────────
 let _fbTimer = null;
-function showLastAction(direction, name, price) {
+function showLastAction(direction, name, price, itemType) {
   const el = document.getElementById('trade-last-action');
   const fb = document.getElementById('trade-feedback');
   if (!el || !fb) return;
-  el.textContent = `${direction === 'sell' ? '+' : '-'}${price} 💰  ${name}`;
+  let text = `${direction === 'sell' ? '+' : '-'}${price} 💰  ${name}`;
+  if (direction === 'sell') {
+    const avg  = _avgBuyPrice[itemType] ?? 0;
+    const paid = _paidQty[itemType]     ?? 0;
+    if (avg > 0 && paid > 0) {
+      const profit = price - Math.round(avg);
+      text += `  (${profit >= 0 ? '+' : ''}${profit} 💰)`;
+    }
+  }
+  el.textContent = text;
   fb.classList.remove('hidden');
   if (_fbTimer) clearTimeout(_fbTimer);
   _fbTimer = setTimeout(() => {

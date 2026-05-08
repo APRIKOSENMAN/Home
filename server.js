@@ -12,7 +12,7 @@ const BUILDINGS      = require('./data/buildings.json');
 const RECIPES        = require('./data/recipes.json');
 const ITEMS          = require('./data/items.json');
 const TRADE_BALANCE  = require('./trade-balance-public.json');
-const { calculateSellPrice, calculateBuyPrice, calculateSessionPrices } = require('./shared/trade-pricing.cjs');
+const { calculateSellPrice, calculateBuyPrice, calculateSessionPrices, updateAvgBuyPrice } = require('./shared/trade-pricing.cjs');
 const PKG_VERSION = require('./package.json').version;
 const { executeTransaction, getUserState } = require('./currency-manager');
 
@@ -137,6 +137,9 @@ async function initDb() {
       PRIMARY KEY (username, item_type)
     );
   `);
+  // Add avg buy price tracking columns (idempotent)
+  await pool.query(`ALTER TABLE storage_items ADD COLUMN IF NOT EXISTS avg_buy_price DECIMAL(10,2) DEFAULT 0`);
+  await pool.query(`ALTER TABLE storage_items ADD COLUMN IF NOT EXISTS paid_quantity INTEGER DEFAULT 0`);
   // Migrate old German IDs to English placeholder IDs
   await pool.query(`UPDATE unplaced_buildings SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
   await pool.query(`UPDATE city_buildings     SET type = 'building_001' WHERE type = 'goldbarren_giesserei'`);
@@ -1030,7 +1033,7 @@ async function buildSessionResponse(sessionRow, username) {
 
   const { rows: [userRow] } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
   const { rows: invRows }   = await pool.query(
-    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+    `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity" FROM storage_items WHERE username=$1`, [username]
   );
   return {
     session_id:       sessionRow.session_id,
@@ -1070,10 +1073,16 @@ async function performSync(username, session_id, sync_number, transactions) {
   stockRows.forEach(s => { serverStocks[s.item_type] = s.current_stock; });
 
   const { rows: invRows } = await pool.query(
-    'SELECT item_type, quantity FROM storage_items WHERE username=$1', [username]
+    'SELECT item_type, quantity, avg_buy_price, paid_quantity FROM storage_items WHERE username=$1', [username]
   );
   const playerInventory = {};
-  invRows.forEach(r => { playerInventory[r.item_type] = r.quantity; });
+  const playerAvg  = {};
+  const playerPaid = {};
+  invRows.forEach(r => {
+    playerInventory[r.item_type] = r.quantity;
+    playerAvg[r.item_type]  = parseFloat(r.avg_buy_price) || 0;
+    playerPaid[r.item_type] = r.paid_quantity || 0;
+  });
 
   const config      = TRADE_BALANCE.pricing;
   let totalGoldDelta = 0;
@@ -1081,6 +1090,8 @@ async function performSync(username, session_id, sync_number, transactions) {
   const invDeltas    = {};
   const clientCalc   = {};
   const serverCalc   = {};
+  const buyBatches   = {};
+  const sellQtys     = {};
 
   for (const tx of transactions) {
     const { item_type, direction, quantity, client_price_per_unit } = tx;
@@ -1102,12 +1113,41 @@ async function performSync(username, session_id, sync_number, transactions) {
       invDeltas[item_type]   = (invDeltas[item_type]   ?? 0) - quantity;
       stockDeltas[item_type] = (stockDeltas[item_type] ?? 0) + quantity;
       totalGoldDelta += serverPrice * quantity;
+      sellQtys[item_type] = (sellQtys[item_type] ?? 0) + quantity;
     } else {
       if (stockBefore < quantity) throw Object.assign(new Error(`Händler hat nicht genug ${item_type}`), { status: 400 });
       invDeltas[item_type]   = (invDeltas[item_type]   ?? 0) + quantity;
       stockDeltas[item_type] = (stockDeltas[item_type] ?? 0) - quantity;
       totalGoldDelta -= serverPrice * quantity;
+      if (!buyBatches[item_type]) buyBatches[item_type] = [];
+      buyBatches[item_type].push({ price: serverPrice, qty: quantity });
     }
+  }
+
+  // Compute avg_buy_price / paid_quantity updates
+  const avgUpdates = {};
+  for (const [itemType, sellQty] of Object.entries(sellQtys)) {
+    const finalQty = (playerInventory[itemType] ?? 0) + (invDeltas[itemType] ?? 0);
+    if (finalQty <= 0) {
+      avgUpdates[itemType] = { newAvg: 0, newPaid: 0 };
+    } else {
+      avgUpdates[itemType] = {
+        newAvg:  playerAvg[itemType]  ?? 0,
+        newPaid: Math.max(0, (playerPaid[itemType] ?? 0) - sellQty),
+      };
+    }
+  }
+  for (const [itemType, batches] of Object.entries(buyBatches)) {
+    const ex      = avgUpdates[itemType];
+    let curPaid   = ex ? ex.newPaid : (playerPaid[itemType] ?? 0);
+    let curAvg    = ex ? ex.newAvg  : (playerAvg[itemType]  ?? 0);
+    for (const { price, qty } of batches) {
+      ({ newAvg: curAvg, newPaid: curPaid } = updateAvgBuyPrice(curAvg, curPaid, price, qty));
+    }
+    const finalQty = (playerInventory[itemType] ?? 0) + (invDeltas[itemType] ?? 0);
+    avgUpdates[itemType] = finalQty <= 0
+      ? { newAvg: 0, newPaid: 0 }
+      : { newAvg: curAvg, newPaid: curPaid };
   }
 
   const { rows: [userRow] } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
@@ -1145,6 +1185,12 @@ async function performSync(username, session_id, sync_number, transactions) {
         );
       }
     }
+    for (const [itemType, { newAvg, newPaid }] of Object.entries(avgUpdates)) {
+      await pgClient.query(
+        'UPDATE storage_items SET avg_buy_price=$1, paid_quantity=$2 WHERE username=$3 AND item_type=$4',
+        [newAvg, newPaid, username, itemType]
+      );
+    }
     await pgClient.query('UPDATE users SET gold=gold+$1 WHERE username=$2', [totalGoldDelta, username]);
     await pgClient.query('UPDATE trade_sessions SET last_sync_at=NOW() WHERE session_id=$1', [session_id]);
     await pgClient.query(
@@ -1171,7 +1217,7 @@ async function performSync(username, session_id, sync_number, transactions) {
 
   const { rows: [updUser] }  = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
   const { rows: updInv }     = await pool.query(
-    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
+    `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity" FROM storage_items WHERE username=$1`, [username]
   );
   const { rows: updStocks }  = await pool.query(
     'SELECT item_type, current_stock FROM trade_session_stocks WHERE session_id=$1', [session_id]
@@ -1288,11 +1334,44 @@ async function expireOldSessions() {
   );
 }
 
+// ── Dev hot-reload for data files ─────────────────
+if (!process.env.RAILWAY_ENVIRONMENT) {
+  const fs = require('fs');
+  const hotReload = (file, target) => {
+    fs.watchFile(path.join(__dirname, file), { interval: 300 }, () => {
+      try {
+        const fresh = JSON.parse(fs.readFileSync(path.join(__dirname, file), 'utf8'));
+        Object.keys(target).forEach(k => delete target[k]);
+        Object.assign(target, fresh);
+        console.log(`[dev] ${file} reloaded`);
+      } catch (e) {
+        console.error(`[dev] ${file} reload error:`, e.message);
+      }
+    });
+  };
+  hotReload('data/items.json',           ITEMS);
+  hotReload('data/buildings.json',       BUILDINGS);
+  hotReload('data/recipes.json',         RECIPES);
+  hotReload('trade-balance-public.json', TRADE_BALANCE);
+}
+
 // ── Start ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 initDb()
   .then(() => {
-    app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`));
+    const startServer = (retries = 5) => {
+      app.listen(PORT, () => console.log(`Server läuft auf http://localhost:${PORT}`))
+        .on('error', err => {
+          if (err.code === 'EADDRINUSE' && retries > 0) {
+            console.log(`Port ${PORT} belegt, neuer Versuch in 1s... (${retries} übrig)`);
+            setTimeout(() => startServer(retries - 1), 1000);
+          } else {
+            console.error(err);
+            process.exit(1);
+          }
+        });
+    };
+    startServer();
     expireOldSessions();
     setInterval(expireOldSessions, 10 * 60 * 1000);
   })

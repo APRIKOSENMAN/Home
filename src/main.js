@@ -273,7 +273,7 @@ Object.assign(window, {
 
 // ── Init ─────────────────────────────────────────
 (async () => {
-  await loadLocale('de');
+  await loadLocale('en');
   applyI18n();
   const data = await api('GET', '/api/me');
   if (data.user) { setCurrentUser(data.user); showApp(data.user); }

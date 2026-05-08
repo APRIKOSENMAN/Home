@@ -12,6 +12,15 @@ function calculateBuyPrice(basePrice, baseQuantity, currentStock, config) {
   return Math.round(calculateSellPrice(basePrice, baseQuantity, currentStock, config) * config.buy_markup);
 }
 
+function updateAvgBuyPrice(oldAvg, oldPaidQty, purchasePrice, purchasedQty) {
+  const newPaid = oldPaidQty + purchasedQty;
+  if (newPaid === 0) return { newAvg: 0, newPaid: 0 };
+  return {
+    newAvg:  Math.max(0, (oldAvg * oldPaidQty + purchasePrice * purchasedQty) / newPaid),
+    newPaid,
+  };
+}
+
 function calculateSessionPrices(items, sessionStocks, config) {
   const prices = {};
   for (const [itemType, item] of Object.entries(items)) {
@@ -25,4 +34,4 @@ function calculateSessionPrices(items, sessionStocks, config) {
   return prices;
 }
 
-module.exports = { calculateSellPrice, calculateBuyPrice, calculateSessionPrices };
+module.exports = { calculateSellPrice, calculateBuyPrice, calculateSessionPrices, updateAvgBuyPrice };
