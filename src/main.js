@@ -9,7 +9,7 @@ import { loadProfile, deletePost, updateProfileStats, handleSearch } from './pro
 import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoardView, sortPostsTable, renderPostsTable, renderPosts, vote } from './board.js';
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
 import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
-import { loadTrade, tradeBuy, tradeSell, updateGoldDisplays } from './trade.js';
+import { loadTrade, tradeGenerateSession, leaveTrade, stopSyncTimer, updateGoldDisplays } from './trade.js';
 import { loadWiki } from './wiki.js';
 import { loadFinance, sortTransactionLog, renderTransactionLog } from './finance.js';
 import { loadVersions, getVersionString } from './versions.js';
@@ -120,6 +120,7 @@ function handleRoute() {
   const hash = window.location.hash || '#board';
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   stopBoardRefresh();
+  leaveTrade();
   closeColFilter();
   closeBuildingPanel();
   document.getElementById('sub-header')?.classList.add('hidden');
@@ -256,8 +257,7 @@ Object.assign(window, {
   removeBuilding,
   closeBuildingPanel,
   // trade
-  tradeBuy,
-  tradeSell,
+  tradeGenerateSession,
   updateGoldDisplays,
   // finance
   sortTransactionLog,

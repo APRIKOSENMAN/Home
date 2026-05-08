@@ -360,13 +360,19 @@
       <!-- Handel -->
       <div id="view-trade" class="view hidden">
         <div class="panel">
-          <div class="panel-header" id="trade-trader-name">HÄNDLER</div>
-          <div class="wheel-gold-row" style="padding:.6rem 1rem">
-            <span class="wheel-gold-label">DEIN GOLD</span>
-            <span class="wheel-gold-val" id="trade-gold">–</span>
+          <div class="panel-header">HÄNDLER</div>
+          <div class="trade-session-bar">
+            <span id="trade-session-status" class="trade-session-status">Kein aktiver Händler</span>
+            <span class="wheel-gold-val" id="trade-gold">– 💰</span>
           </div>
-          <div id="trade-table-container" style="overflow-x:auto"></div>
-          <p class="error" id="trade-error" style="padding:.5rem 1rem"></p>
+          <div class="trade-session-bar" style="border-bottom:none;padding-top:.4rem">
+            <button id="trade-gen-btn" class="trade-gen-btn" onclick="tradeGenerateSession()">HÄNDLER SUCHEN</button>
+          </div>
+        </div>
+        <div id="trade-table-container"></div>
+        <div id="trade-feedback" class="panel trade-feedback hidden">
+          <span id="trade-last-action" class="trade-last-action"></span>
+          <span id="trade-sync-status" class="trade-sync-status"></span>
         </div>
       </div>
 
