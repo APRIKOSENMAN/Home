@@ -12,6 +12,7 @@ import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostMo
 import { loadTrade, tradeBuy, tradeSell, updateGoldDisplays } from './trade.js';
 import { loadWiki } from './wiki.js';
 import { loadFinance, sortTransactionLog, renderTransactionLog } from './finance.js';
+import { loadVersions, getVersionString } from './versions.js';
 
 // ── Register renderers (avoids circular deps in table-filter.js) ──
 registerRenderer('lb', renderLeaderboard);
@@ -102,6 +103,7 @@ function showApp(username) {
   if (el) el.textContent = username.toUpperCase();
   document.getElementById('auth-section').classList.add('hidden');
   document.getElementById('app-section').classList.remove('hidden');
+  loadVersions();
   if (!window.location.hash || window.location.hash === '#') {
     window.location.hash = '#board';
   } else {
@@ -145,6 +147,10 @@ function handleRoute() {
     document.querySelector('[href="#factory"]').classList.add('active');
     showView('factory');
     loadFactory();
+  } else if (hash === '#versions') {
+    document.querySelector('[href="#versions"]').classList.add('active');
+    showView('versions');
+    loadVersions();
   } else if (hash === '#finance') {
     document.querySelector('[href="#finance"]').classList.add('active');
     showView('finance');

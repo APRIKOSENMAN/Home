@@ -120,6 +120,11 @@ header {
 
 nav { display: flex; gap: .2rem; }
 
+.nav-version {
+  font-weight: 800;
+  letter-spacing: .6px;
+}
+
 .finance-tab {
   position: absolute;
   left: 60%;
