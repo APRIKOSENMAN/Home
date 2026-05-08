@@ -7,9 +7,11 @@ const { randomUUID } = require('crypto');
 const { execSync }   = require('child_process');
 const path           = require('path');
 
-const BUILDINGS = require('./data/buildings.json');
-const RECIPES   = require('./data/recipes.json');
-const ITEMS     = require('./data/items.json');
+const BUILDINGS      = require('./data/buildings.json');
+const RECIPES        = require('./data/recipes.json');
+const ITEMS          = require('./data/items.json');
+const TRADE_BALANCE  = require('./trade-balance-public.json');
+const { calculateSellPrice, calculateBuyPrice, calculateSessionPrices } = require('./shared/trade-pricing.cjs');
 const PKG_VERSION = require('./package.json').version;
 const { executeTransaction, getUserState } = require('./currency-manager');
 
@@ -170,6 +172,47 @@ async function initDb() {
       price_per_unit INT  NOT NULL,
       total_price    INT  NOT NULL,
       timestamp      TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  // Dynamic trade session tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trade_sessions (
+      id           SERIAL PRIMARY KEY,
+      username     TEXT NOT NULL REFERENCES users(username),
+      session_id   TEXT NOT NULL UNIQUE,
+      created_at   TIMESTAMPTZ DEFAULT NOW(),
+      expires_at   TIMESTAMPTZ NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','expired','completed')),
+      last_sync_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_trade_sessions_user   ON trade_sessions(username);
+    CREATE INDEX IF NOT EXISTS idx_trade_sessions_status ON trade_sessions(status);
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trade_session_stocks (
+      id            SERIAL PRIMARY KEY,
+      session_id    TEXT NOT NULL REFERENCES trade_sessions(session_id) ON DELETE CASCADE,
+      item_type     TEXT NOT NULL,
+      initial_stock INT  NOT NULL,
+      current_stock INT  NOT NULL,
+      UNIQUE (session_id, item_type)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trade_session_log (
+      id                  SERIAL PRIMARY KEY,
+      session_id          TEXT NOT NULL REFERENCES trade_sessions(session_id),
+      username            TEXT NOT NULL,
+      sync_number         INT  NOT NULL,
+      items_sold          JSONB,
+      items_bought        JSONB,
+      gold_delta          INT  NOT NULL DEFAULT 0,
+      client_calculation  JSONB,
+      server_calculation  JSONB,
+      discrepancy         BOOLEAN DEFAULT FALSE,
+      created_at          TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (session_id, sync_number)
     );
   `);
 
