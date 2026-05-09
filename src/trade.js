@@ -56,9 +56,12 @@ export async function tradeGenerateSession() {
     // Cache hit: apply immediately, no server call needed
     if (btn) btn.disabled = false;
     _logSummary();
-    applySession(data, true);
+    applySession(data, false); // false: we activate synchronously below
     renderAll();
-    traderPrefetch.invalidate(); // consumed — clear so prime() starts a fresh fetch
+    // Activate before prime() so the prefetch DELETE doesn't kill this session
+    // while it's still status='prefetched'. Session must be 'active' first.
+    await api('POST', '/api/trade/session/activate', { session_id: data.session_id }).catch(() => {});
+    traderPrefetch.invalidate();
     traderPrefetch.prime();
     return;
   }
@@ -145,7 +148,6 @@ function executeTrade(itemType, direction) {
   updateGoldDisplays(_gold);
   updateRow(itemType);
   updateSummaryPopup(itemType, item.display_name);
-  showLastAction(direction, item.display_name, price, itemType);
 }
 
 // ── Hold-down ──────────────────────────────────────
@@ -194,7 +196,7 @@ async function doSync() {
       session_id: _session.session_id, sync_number: _syncNum, transactions: batch,
     });
     if (result.expired) { handleExpired(); return; }
-    if (result.error)   { _pending.unshift(...batch); showSyncStatus('error'); return; }
+    if (result.error)   { _pending.unshift(...batch); return; }
     // Only overwrite optimistic state when the player is not actively trading
     // and no new transactions have queued up while this request was in-flight.
     if (!_isTradingActive && _pending.length === 0) {
@@ -208,11 +210,9 @@ async function doSync() {
       updateGoldDisplays(_gold);
       _items.forEach(item => updateRow(item.item_type));
     }
-    showSyncStatus('ok');
     if (_pending.length > 0) doSync();
   } catch (_) {
     _pending.unshift(...batch);
-    showSyncStatus('error');
   } finally {
     _syncInFlight = false;
   }
@@ -419,38 +419,6 @@ function _logSummary() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: _session.session_id, summary }),
   }).catch(() => {});
-}
-
-// ── Feedback ──────────────────────────────────────
-let _fbTimer = null;
-function showLastAction(direction, name, price, itemType) {
-  const el = document.getElementById('trade-last-action');
-  const fb = document.getElementById('trade-feedback');
-  if (!el || !fb) return;
-  let text = `${direction === 'sell' ? '+' : '-'}${price} 💰  ${name}`;
-  if (direction === 'sell') {
-    const avg  = _avgBuyPrice[itemType] ?? 0;
-    const paid = _paidQty[itemType]     ?? 0;
-    if (avg > 0 && paid > 0) {
-      const profit = price - Math.round(avg);
-      text += `  (${profit >= 0 ? '+' : ''}${profit} 💰)`;
-    }
-  }
-  el.textContent = text;
-  fb.classList.remove('hidden');
-  if (_fbTimer) clearTimeout(_fbTimer);
-  _fbTimer = setTimeout(() => {
-    fb.classList.add('hidden');
-    el.textContent = '';
-    const syncEl = document.getElementById('trade-sync-status');
-    if (syncEl) syncEl.textContent = '';
-  }, 3000);
-}
-
-function showSyncStatus(state) {
-  const el = document.getElementById('trade-sync-status');
-  if (!el) return;
-  el.textContent = state === 'error' ? '⚠ Sync-Fehler' : '';
 }
 
 // ── Gold displays (shared across tabs) ────────────

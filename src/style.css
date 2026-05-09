@@ -1015,12 +1015,6 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 }
 .trade-gen-btn:hover:not(:disabled) { background: var(--primary-lt); }
 .trade-gen-btn:disabled { background: #9aabb8; cursor: not-allowed; }
-.trade-feedback {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .45rem 1rem; font-size: .82rem; margin-top: .5rem;
-}
-.trade-last-action { font-weight: 600; }
-.trade-sync-status { color: var(--dislike); font-size: .75rem; }
 
 .trade-summary-popup {
   position: fixed;

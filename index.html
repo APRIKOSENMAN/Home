@@ -21,6 +21,9 @@
         <input type="password" id="login-pass" placeholder="Passwort" />
         <button onclick="login()" data-i18n="ui.auth.login.btn">EINLOGGEN</button>
         <p class="error" id="login-error"></p>
+        <div class="divider"></div>
+        <button class="btn-test" onclick="loginAsTestUser()">&#127381; LOGIN AS TEST USER</button>
+        <p class="quick-hint" data-i18n="ui.auth.testuser.hint">Gemeinsamer Testaccount — 100k Gold, 1000× alle Items</p>
         <p class="switch"><span data-i18n="ui.auth.noaccount">Noch kein Konto?</span> <a href="#" onclick="showRegister()" data-i18n="ui.auth.toregister">Registrieren</a></p>
       </div>
     </div>
@@ -42,8 +45,6 @@
         <div class="divider"></div>
         <button class="btn-quick" onclick="quickRegister()">&#9889; QUICK REGISTER</button>
         <p class="quick-hint" data-i18n="ui.auth.quickregister.hint">Zufälliger 8-stelliger Account — Name = Passwort</p>
-        <button class="btn-test" onclick="loginAsTestUser()">&#127381; LOGIN AS TEST USER</button>
-        <p class="quick-hint" data-i18n="ui.auth.testuser.hint">Gemeinsamer Testaccount — 100k Gold, 1000× alle Items</p>
         <p class="error" id="reg-error"></p>
         <p class="switch"><span data-i18n="ui.auth.hasaccount">Schon registriert?</span> <a href="#" onclick="showLogin()" data-i18n="ui.auth.tologin">Anmelden</a></p>
       </div>
@@ -372,10 +373,6 @@
           </div>
         </div>
         <div id="trade-table-container"></div>
-        <div id="trade-feedback" class="panel trade-feedback hidden">
-          <span id="trade-last-action" class="trade-last-action"></span>
-          <span id="trade-sync-status" class="trade-sync-status"></span>
-        </div>
       </div>
 
     </main>
