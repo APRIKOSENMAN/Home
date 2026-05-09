@@ -10,6 +10,7 @@ import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoa
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
 import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
 import { loadTrade, tradeGenerateSession, leaveTrade, stopSyncTimer, updateGoldDisplays } from './trade.js';
+import { traderPrefetch } from './trade-prefetch.js';
 import { loadWiki } from './wiki.js';
 import { loadFinance, sortTransactionLog, renderTransactionLog } from './finance.js';
 import { loadVersions, getVersionString } from './versions.js';
@@ -170,6 +171,7 @@ function handleRoute() {
   } else if (hash === '#trade') {
     document.querySelector('[href="#trade"]').classList.add('active');
     showView('trade');
+    if (currentUser) traderPrefetch.prime();
     loadTrade();
   } else if (hash === '#wiki') {
     document.querySelector('[href="#wiki"]').classList.add('active');

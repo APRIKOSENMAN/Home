@@ -1,6 +1,9 @@
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { calculateSellPrice, calculateBuyPrice } from '../shared/trade-pricing.js';
+import { traderPrefetch } from './trade-prefetch.js';
+import { recordBurst, getFullSummary, resetSummary } from './trade-session-summary.js';
+import { updateSummaryPopup, clearAllSummaryPopups } from './trade-summary-popup.js';
 
 // ── Session state ──────────────────────────────────
 let _session        = null;
@@ -21,6 +24,7 @@ let _balanceCfg        = null;
 let _isTradingActive   = false;
 let _syncInFlight      = false;
 let _syncDebounceTimer = null;
+let _needsActivation   = false;
 
 async function loadBalanceCfg() {
   if (_balanceCfg) return;
@@ -40,14 +44,39 @@ export async function tradeGenerateSession() {
   if (btn) btn.disabled = true;
   stopCountdown();
   await loadBalanceCfg();
-  const data = await api('POST', '/api/trade/session/generate');
+
+  // Try prefetch cache first — consume() is instant if ready, awaits in-flight if loading
+  let data = null;
+  const prefetchStatus = traderPrefetch.getStatus();
+  if (prefetchStatus === 'ready' || prefetchStatus === 'loading') {
+    data = await traderPrefetch.consume().catch(() => null);
+  }
+
+  if (data && !data.error) {
+    // Cache hit: apply immediately, no server call needed
+    if (btn) btn.disabled = false;
+    _logSummary();
+    applySession(data, true);
+    renderAll();
+    traderPrefetch.invalidate(); // consumed — clear so prime() starts a fresh fetch
+    traderPrefetch.prime();
+    return;
+  }
+
+  // Fallback: direct API call (prefetch was idle, expired, or failed)
+  data = await api('POST', '/api/trade/session/generate');
   if (btn) btn.disabled = false;
   if (data.error) return;
-  applySession(data);
+  _logSummary();
+  applySession(data, false);
   renderAll();
+  traderPrefetch.invalidate(); // clear any stale prefetch data
+  traderPrefetch.prime();
 }
 
-function applySession(data) {
+function applySession(data, fromPrefetch = false) {
+  resetSummary();
+  clearAllSummaryPopups();
   _session   = { session_id: data.session_id, expires_at: data.expires_at };
   _config    = data.config;
   _items     = data.items;
@@ -56,6 +85,7 @@ function applySession(data) {
   _syncNum         = 0;
   _isTradingActive = false;
   _syncInFlight    = false;
+  _needsActivation = fromPrefetch;
   if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
   data.items.forEach(item => { _stocks[item.item_type] = item.current_stock; });
   _inventory   = {};
@@ -82,6 +112,10 @@ function buyPx(item) {
 // ── Trade execution ────────────────────────────────
 function executeTrade(itemType, direction) {
   if (!_session) return;
+  if (_needsActivation) {
+    _needsActivation = false;
+    api('POST', '/api/trade/session/activate', { session_id: _session.session_id }).catch(() => {});
+  }
   const item  = _items.find(i => i.item_type === itemType);
   if (!item) return;
   const stock = _stocks[itemType] ?? 0;
@@ -107,8 +141,10 @@ function executeTrade(itemType, direction) {
   _pending.push({ item_type: itemType, direction, quantity: 1,
     client_price_per_unit: price, stock_before: stockBefore, stock_after: _stocks[itemType] });
 
+  recordBurst(itemType, direction, 1, price);
   updateGoldDisplays(_gold);
   updateRow(itemType);
+  updateSummaryPopup(itemType, item.display_name);
   showLastAction(direction, item.display_name, price, itemType);
 }
 
@@ -366,6 +402,23 @@ function attachHoldListeners() {
     btn.addEventListener('touchend',    () => stopHold());
     btn.addEventListener('touchcancel', () => stopHold());
   });
+}
+
+function _logSummary() {
+  if (!_session) return;
+  const full = getFullSummary();
+  if (full.length === 0) return;
+  const summary = full.map(s => ({
+    item_id:  s.item_id,
+    net_qty:  s.net_qty,
+    net_avg:  s.net_avg !== null ? Math.round(s.net_avg) : null,
+    net_gold: Math.round(s.net_gold),
+  }));
+  fetch('/api/trade/session/log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: _session.session_id, summary }),
+  }).catch(() => {});
 }
 
 // ── Feedback ──────────────────────────────────────

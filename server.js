@@ -146,38 +146,13 @@ async function initDb() {
   await pool.query(`UPDATE storage_items SET item_type = 'material_001' WHERE item_type = 'goldbarren'`);
   // Migrate material_xxx → item_xxx
   for (const n of ['001','002','003','004','005','006','007','008','900','901']) {
-    await pool.query(`UPDATE storage_items    SET item_type='item_${n}' WHERE item_type='material_${n}'`);
-    await pool.query(`UPDATE trader_inventory SET item_type='item_${n}' WHERE item_type='material_${n}'`);
+    await pool.query(`UPDATE storage_items SET item_type='item_${n}' WHERE item_type='material_${n}'`);
   }
 
-  // Trade tables
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS traders (
-      id           SERIAL PRIMARY KEY,
-      trader_id    TEXT NOT NULL UNIQUE,
-      display_name TEXT NOT NULL,
-      description  TEXT,
-      created_at   TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS trader_inventory (
-      id        SERIAL PRIMARY KEY,
-      trader_id TEXT NOT NULL REFERENCES traders(trader_id),
-      item_type TEXT NOT NULL,
-      stock     INT  NOT NULL DEFAULT 0,
-      UNIQUE (trader_id, item_type)
-    );
-    CREATE TABLE IF NOT EXISTS trade_log (
-      id             SERIAL PRIMARY KEY,
-      username       TEXT NOT NULL,
-      trader_id      TEXT NOT NULL,
-      item_type      TEXT NOT NULL,
-      direction      TEXT NOT NULL CHECK (direction IN ('buy','sell')),
-      quantity       INT  NOT NULL,
-      price_per_unit INT  NOT NULL,
-      total_price    INT  NOT NULL,
-      timestamp      TIMESTAMPTZ DEFAULT NOW()
-    );
-  `);
+  // Drop legacy static-market tables (replaced by dynamic session system)
+  await pool.query(`DROP TABLE IF EXISTS trade_log`);
+  await pool.query(`DROP TABLE IF EXISTS trader_inventory`);
+  await pool.query(`DROP TABLE IF EXISTS traders`);
 
   // Dynamic trade session tables
   await pool.query(`
@@ -187,12 +162,16 @@ async function initDb() {
       session_id   TEXT NOT NULL UNIQUE,
       created_at   TIMESTAMPTZ DEFAULT NOW(),
       expires_at   TIMESTAMPTZ NOT NULL,
-      status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','expired','completed')),
+      status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','expired','completed','prefetched')),
       last_sync_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_trade_sessions_user   ON trade_sessions(username);
     CREATE INDEX IF NOT EXISTS idx_trade_sessions_status ON trade_sessions(status);
   `);
+  // Allow 'prefetched' status (idempotent migration for existing databases)
+  await pool.query(`ALTER TABLE trade_sessions DROP CONSTRAINT IF EXISTS trade_sessions_status_check`);
+  await pool.query(`ALTER TABLE trade_sessions ADD CONSTRAINT trade_sessions_status_check CHECK (status IN ('active','expired','completed','prefetched'))`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS trade_session_stocks (
       id            SERIAL PRIMARY KEY,
@@ -220,6 +199,16 @@ async function initDb() {
     );
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trade_session_summary (
+      id         SERIAL PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      username   TEXT NOT NULL,
+      summary    JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
   // Currency Transaction Audit Log
   await pool.query(`
     CREATE TABLE IF NOT EXISTS currency_transactions (
@@ -234,20 +223,6 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_currency_trans_action ON currency_transactions(action);
   `);
 
-  // Seed market_trader (idempotent)
-  await pool.query(`
-    INSERT INTO traders (trader_id, display_name, description)
-    VALUES ('market_trader', 'Markt-Händler', 'Handelt mit allen verfügbaren Waren')
-    ON CONFLICT (trader_id) DO NOTHING
-  `);
-  for (const [itemType, def] of Object.entries(ITEMS)) {
-    if (!def.tradable) continue;
-    await pool.query(`
-      INSERT INTO trader_inventory (trader_id, item_type, stock)
-      VALUES ('market_trader', $1, 999999)
-      ON CONFLICT (trader_id, item_type) DO NOTHING
-    `, [itemType]);
-  }
 }
 
 app.use(express.json());
@@ -815,176 +790,7 @@ app.get('/api/wheel/log', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-// ── Trade (legacy static market – no longer actively used) ────────────────────
-// trade_log and traders tables are kept for historical data.
-// New system: /api/trade/session/* below.
-
 const LOCALES = require('./data/locales/en.json');
-
-app.get('/api/trade/offers/:trader_id', requireAuth, async (req, res) => {
-  const { trader_id } = req.params;
-  const { rows: trader } = await pool.query(
-    'SELECT trader_id, display_name, description FROM traders WHERE trader_id=$1',
-    [trader_id]
-  );
-  if (!trader[0]) return res.status(404).json({ error: 'Händler nicht gefunden' });
-
-  const { rows: inv } = await pool.query(
-    'SELECT item_type, stock FROM trader_inventory WHERE trader_id=$1',
-    [trader_id]
-  );
-
-  const offers = inv
-    .filter(row => ITEMS[row.item_type]?.tradable)
-    .map(row => {
-      const def = ITEMS[row.item_type];
-      return {
-        item_type:    row.item_type,
-        display_name: LOCALES[`items.${row.item_type}.name`] ?? row.item_type,
-        icon:         def.icon,
-        buy_price:    def.buy_price,
-        sell_price:   def.sell_price,
-        stock:        row.stock,
-      };
-    });
-
-  const { rows: playerItems } = await pool.query(
-    'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1',
-    [req.session.username]
-  );
-  const { rows: playerRow } = await pool.query(
-    'SELECT gold FROM users WHERE username=$1',
-    [req.session.username]
-  );
-  res.json({ trader: trader[0], offers, gold: playerRow[0]?.gold ?? 0, items: playerItems });
-});
-
-app.post('/api/trade/buy', requireAuth, async (req, res) => {
-  const username            = req.session.username;
-  const { trader_id, item_type, quantity } = req.body;
-
-  if (!trader_id || !item_type || typeof quantity !== 'number' || quantity < 1 || !Number.isInteger(quantity))
-    return res.status(400).json({ error: 'Ungültige Anfrage' });
-
-  const def = ITEMS[item_type];
-  if (!def || !def.tradable)
-    return res.status(400).json({ error: 'Item nicht handelbar' });
-
-  const totalPrice = def.buy_price * quantity;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: inv } = await client.query(
-      'SELECT stock FROM trader_inventory WHERE trader_id=$1 AND item_type=$2 FOR UPDATE',
-      [trader_id, item_type]
-    );
-    if (!inv[0] || inv[0].stock < quantity)
-      throw new Error('Händler hat nicht genug Vorrat');
-
-    const { rows: user } = await client.query(
-      'SELECT gold FROM users WHERE username=$1 FOR UPDATE',
-      [username]
-    );
-    if (user[0].gold < totalPrice)
-      throw new Error(`Nicht genug Gold (${totalPrice} benötigt, ${user[0].gold} vorhanden)`);
-
-    await client.query('UPDATE users SET gold=gold-$1 WHERE username=$2', [totalPrice, username]);
-    await client.query(
-      'UPDATE trader_inventory SET stock=stock-$1 WHERE trader_id=$2 AND item_type=$3',
-      [quantity, trader_id, item_type]
-    );
-    await client.query(
-      `INSERT INTO storage_items (username,item_type,quantity) VALUES ($1,$2,$3)
-       ON CONFLICT (username,item_type) DO UPDATE SET quantity=storage_items.quantity+$3`,
-      [username, item_type, quantity]
-    );
-    await client.query(
-      `INSERT INTO trade_log (username,trader_id,item_type,direction,quantity,price_per_unit,total_price)
-       VALUES ($1,$2,$3,'buy',$4,$5,$6)`,
-      [username, trader_id, item_type, quantity, def.buy_price, totalPrice]
-    );
-
-    await client.query('COMMIT');
-
-    const { rows: updated } = await pool.query(
-      'SELECT gold FROM users WHERE username=$1', [username]
-    );
-    const { rows: items } = await pool.query(
-      'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
-    );
-    res.json({ ok: true, gold: updated[0].gold, items });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    res.status(400).json({ error: e.message });
-  } finally {
-    client.release();
-  }
-});
-
-app.post('/api/trade/sell', requireAuth, async (req, res) => {
-  const username            = req.session.username;
-  const { trader_id, item_type, quantity } = req.body;
-
-  if (!trader_id || !item_type || typeof quantity !== 'number' || quantity < 1 || !Number.isInteger(quantity))
-    return res.status(400).json({ error: 'Ungültige Anfrage' });
-
-  const def = ITEMS[item_type];
-  if (!def || !def.tradable)
-    return res.status(400).json({ error: 'Item nicht handelbar' });
-
-  const totalPrice = def.sell_price * quantity;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: playerInv } = await client.query(
-      'SELECT quantity FROM storage_items WHERE username=$1 AND item_type=$2 FOR UPDATE',
-      [username, item_type]
-    );
-    if (!playerInv[0] || playerInv[0].quantity < quantity)
-      throw new Error('Nicht genug Items zum Verkaufen');
-
-    const newQty = playerInv[0].quantity - quantity;
-    if (newQty === 0) {
-      await client.query(
-        'DELETE FROM storage_items WHERE username=$1 AND item_type=$2',
-        [username, item_type]
-      );
-    } else {
-      await client.query(
-        'UPDATE storage_items SET quantity=$1 WHERE username=$2 AND item_type=$3',
-        [newQty, username, item_type]
-      );
-    }
-
-    await client.query('UPDATE users SET gold=gold+$1 WHERE username=$2', [totalPrice, username]);
-    await client.query(
-      'UPDATE trader_inventory SET stock=stock+$1 WHERE trader_id=$2 AND item_type=$3',
-      [quantity, trader_id, item_type]
-    );
-    await client.query(
-      `INSERT INTO trade_log (username,trader_id,item_type,direction,quantity,price_per_unit,total_price)
-       VALUES ($1,$2,$3,'sell',$4,$5,$6)`,
-      [username, trader_id, item_type, quantity, def.sell_price, totalPrice]
-    );
-
-    await client.query('COMMIT');
-
-    const { rows: updated } = await pool.query(
-      'SELECT gold FROM users WHERE username=$1', [username]
-    );
-    const { rows: items } = await pool.query(
-      'SELECT item_type AS "itemType", quantity FROM storage_items WHERE username=$1', [username]
-    );
-    res.json({ ok: true, gold: updated[0].gold, items });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    res.status(400).json({ error: e.message });
-  } finally {
-    client.release();
-  }
-});
 
 // ── Dynamic Trade Sessions ────────────────────────
 
@@ -1005,6 +811,36 @@ function generateSessionStocks() {
     stocks[itemType] = Math.round(Math.max(mean * min_multiplier, Math.min(mean * max_multiplier, raw)));
   }
   return stocks;
+}
+
+async function createTradeSession(username, status) {
+  const sessionId = randomUUID();
+  const expiresAt = new Date(Date.now() + TRADE_BALANCE.session.duration_minutes * 60 * 1000);
+  const stocks    = generateSessionStocks();
+  const pgClient  = await pool.connect();
+  try {
+    await pgClient.query('BEGIN');
+    await pgClient.query(
+      `INSERT INTO trade_sessions (username,session_id,expires_at,status) VALUES ($1,$2,$3,$4)`,
+      [username, sessionId, expiresAt, status]
+    );
+    for (const [itemType, qty] of Object.entries(stocks)) {
+      await pgClient.query(
+        `INSERT INTO trade_session_stocks (session_id,item_type,initial_stock,current_stock) VALUES ($1,$2,$3,$3)`,
+        [sessionId, itemType, qty]
+      );
+    }
+    await pgClient.query('COMMIT');
+  } catch (e) {
+    await pgClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    pgClient.release();
+  }
+  const { rows: [session] } = await pool.query(
+    `SELECT * FROM trade_sessions WHERE session_id=$1`, [sessionId]
+  );
+  return session;
 }
 
 async function buildSessionResponse(sessionRow, username) {
@@ -1052,7 +888,12 @@ async function performSync(username, session_id, sync_number, transactions) {
     [session_id, username]
   );
   if (!session) throw Object.assign(new Error('Session nicht gefunden'), { status: 404 });
-  if (session.status !== 'active') throw Object.assign(new Error('Session abgelaufen'), { status: 400, expired: true });
+  if (session.status === 'prefetched') {
+    // First sync implicitly activates the session (safety net alongside /activate)
+    await pool.query(`UPDATE trade_sessions SET status='active' WHERE session_id=$1`, [session_id]);
+  } else if (session.status !== 'active') {
+    throw Object.assign(new Error('Session abgelaufen'), { status: 400, expired: true });
+  }
   if (new Date(session.expires_at) < new Date()) {
     await pool.query(`UPDATE trade_sessions SET status='expired' WHERE session_id=$1`, [session_id]);
     throw Object.assign(new Error('Session abgelaufen'), { status: 400, expired: true });
@@ -1249,43 +1090,43 @@ function checkSyncRateLimit(username) {
   return entry.count <= 60;
 }
 
-// 2.1 Generate / resume session
+// 2.1 Generate / resume session (fallback when prefetch cache is empty)
 app.post('/api/trade/session/generate', requireAuth, async (req, res) => {
   const username = req.session.username;
   await pool.query(
     `UPDATE trade_sessions SET status='expired' WHERE username=$1 AND status='active'`,
     [username]
   );
+  const sessionRow = await createTradeSession(username, 'active');
+  res.json(await buildSessionResponse(sessionRow, username));
+});
 
-  const sessionId = randomUUID();
-  const expiresAt = new Date(Date.now() + TRADE_BALANCE.session.duration_minutes * 60 * 1000);
-  const stocks    = generateSessionStocks();
-
-  const pgClient = await pool.connect();
-  try {
-    await pgClient.query('BEGIN');
-    await pgClient.query(
-      `INSERT INTO trade_sessions (username,session_id,expires_at,status) VALUES ($1,$2,$3,'active')`,
-      [username, sessionId, expiresAt]
-    );
-    for (const [itemType, qty] of Object.entries(stocks)) {
-      await pgClient.query(
-        `INSERT INTO trade_session_stocks (session_id,item_type,initial_stock,current_stock) VALUES ($1,$2,$3,$3)`,
-        [sessionId, itemType, qty]
-      );
-    }
-    await pgClient.query('COMMIT');
-  } catch (e) {
-    await pgClient.query('ROLLBACK');
-    throw e;
-  } finally {
-    pgClient.release();
-  }
-
-  const { rows: [newSession] } = await pool.query(
-    'SELECT * FROM trade_sessions WHERE session_id=$1', [sessionId]
+// 2.1b Prefetch — generates session + returns full data so client needs no round-trip on click
+app.post('/api/trade/prefetch', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  await pool.query(
+    `DELETE FROM trade_sessions WHERE username=$1 AND status='prefetched'`,
+    [username]
   );
-  res.json(await buildSessionResponse(newSession, username));
+  const session = await createTradeSession(username, 'prefetched');
+  res.json(await buildSessionResponse(session, username));
+});
+
+// 2.1c Activate — called fire-and-forget on first trade after a prefetch-started session
+app.post('/api/trade/session/activate', requireAuth, async (req, res) => {
+  const { session_id } = req.body;
+  if (!session_id) return res.status(400).json({ error: 'Missing session_id' });
+  const { rows: [session] } = await pool.query(
+    `SELECT status FROM trade_sessions WHERE session_id=$1 AND username=$2`,
+    [session_id, req.session.username]
+  );
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.status === 'prefetched') {
+    await pool.query(
+      `UPDATE trade_sessions SET status='active' WHERE session_id=$1`, [session_id]
+    );
+  }
+  res.json({ ok: true });
 });
 
 // 2.2 Get current active session
@@ -1327,10 +1168,27 @@ app.post('/api/trade/session/close', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// 2.5 Expire stale sessions (on startup + every 10 minutes)
+// 2.5 Session summary log (analytics, fire-and-forget from client)
+app.post('/api/trade/session/log', requireAuth, async (req, res) => {
+  const { session_id, summary } = req.body;
+  if (session_id && Array.isArray(summary) && summary.length > 0) {
+    try {
+      await pool.query(
+        `INSERT INTO trade_session_summary (session_id, username, summary) VALUES ($1, $2, $3)`,
+        [session_id, req.session.username, JSON.stringify(summary)]
+      );
+    } catch (_) {}
+  }
+  res.json({ ok: true });
+});
+
+// 2.6 Expire stale sessions (on startup + every 10 minutes)
 async function expireOldSessions() {
   await pool.query(
     `UPDATE trade_sessions SET status='expired' WHERE status='active' AND expires_at < NOW()`
+  );
+  await pool.query(
+    `DELETE FROM trade_sessions WHERE status='prefetched' AND created_at < NOW() - INTERVAL '10 minutes'`
   );
 }
 
