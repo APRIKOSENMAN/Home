@@ -936,10 +936,37 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
 .bp-close-btn:hover { background: #f5f5f5; }
 
 /* ── Trade Table ──────────────────────────────── */
+#trade-table-area {
+  display: flex;
+  align-items: flex-start;
+  gap: .5rem;
+  overflow-x: auto;
+  margin-top: .5rem;
+}
+.trade-inventory-panel, .trade-prices-panel { overflow: hidden; }
 .trade-table {
   width: 100%; border-collapse: collapse; font-size: .85rem;
 }
+.trade-table tbody tr { height: 52px; }
 .trade-table thead tr { background: var(--hdr2); color: #c8d8e8; }
+.trade-table thead tr.trade-section-header { height: 34px; }
+.trade-table thead tr:not(.trade-section-header) { height: 52px; }
+.trade-actions-bar {
+  padding: .55rem 1rem;
+}
+.trade-section-header th {
+  padding: .3rem .9rem;
+  font-size: .78rem; font-weight: 700; letter-spacing: .4px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: var(--hdr2);
+  color: #e8f0f8;
+}
+.trade-section-header-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.trade-section-header-inner .wheel-gold-val { font-size: .78rem; }
 .trade-table th {
   padding: .5rem .9rem; text-align: left;
   font-size: .7rem; font-weight: 700; letter-spacing: 1px;
@@ -970,7 +997,6 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
   background-color: var(--border) !important;
   color: var(--muted); cursor: not-allowed;
 }
-.trade-expired { opacity: 0.4; pointer-events: none; }
 
 .stock-th { width: 100px; min-width: 90px; text-align: center; }
 .stock-legend {
@@ -1002,12 +1028,7 @@ main { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
   transition: left .3s ease, background-color .3s ease;
 }
 
-.trade-session-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .55rem 1rem; border-bottom: 1px solid var(--border-lt);
-}
-.trade-session-status { font-size: .82rem; color: var(--muted); }
-.trade-session-status.active { color: var(--like); font-weight: 700; }
+.trade-session-status { font-size: .78rem; color: #b8d0e8; font-family: var(--mono); }
 .trade-gen-btn {
   padding: .4rem 1rem; background: var(--primary); color: #fff; border: none;
   border-radius: var(--radius); font-size: .75rem; font-weight: 700;

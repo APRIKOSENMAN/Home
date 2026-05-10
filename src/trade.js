@@ -12,7 +12,8 @@ let _inventory      = {};
 let _avgBuyPrice    = {};
 let _paidQty        = {};
 let _gold           = 0;
-let _items          = [];
+let _items          = [];   // session items (for prices table)
+let _allTradeItems  = [];   // all tradeable items (for inventory table, always loaded)
 let _config         = null;
 let _pending        = [];
 let _syncNum        = 0;
@@ -31,12 +32,30 @@ async function loadBalanceCfg() {
   _balanceCfg = await fetch('/trade-balance-public.json').then(r => r.json());
 }
 
+async function loadInventoryData() {
+  const data = await api('GET', '/api/trade/inventory');
+  if (data.error) return;
+  _allTradeItems = data.items;
+  _inventory   = {};
+  _avgBuyPrice = {};
+  _paidQty     = {};
+  data.items.forEach(i => {
+    _inventory[i.item_type]   = i.quantity;
+    _avgBuyPrice[i.item_type] = i.avgBuyPrice;
+    _paidQty[i.item_type]     = i.paidQuantity;
+  });
+}
+
 export async function loadTrade() {
   await loadBalanceCfg();
+  await loadInventoryData();
+  renderActionsPanel();
+  renderInventoryTable();
   const data = await api('GET', '/api/trade/session/current');
-  if (data.error || !data.session_id) { renderNoSession(); return; }
+  if (data.error || !data.session_id) return;
   applySession(data);
-  renderAll();
+  renderPricesTable();
+  updateGoldDisplays(_gold);
 }
 
 export async function tradeGenerateSession() {
@@ -57,7 +76,9 @@ export async function tradeGenerateSession() {
     if (btn) btn.disabled = false;
     _logSummary();
     applySession(data, false); // false: we activate synchronously below
-    renderAll();
+    renderPricesTable();
+    updateGoldDisplays(_gold);
+    _items.forEach(i => updateInventoryRow(i.item_type));
     // Activate before prime() so the prefetch DELETE doesn't kill this session
     // while it's still status='prefetched'. Session must be 'active' first.
     await api('POST', '/api/trade/session/activate', { session_id: data.session_id }).catch(() => {});
@@ -72,7 +93,9 @@ export async function tradeGenerateSession() {
   if (data.error) return;
   _logSummary();
   applySession(data, false);
-  renderAll();
+  renderPricesTable();
+  updateGoldDisplays(_gold);
+  _items.forEach(i => updateInventoryRow(i.item_type));
   traderPrefetch.invalidate(); // clear any stale prefetch data
   traderPrefetch.prime();
 }
@@ -91,14 +114,6 @@ function applySession(data, fromPrefetch = false) {
   _needsActivation = fromPrefetch;
   if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
   data.items.forEach(item => { _stocks[item.item_type] = item.current_stock; });
-  _inventory   = {};
-  _avgBuyPrice = {};
-  _paidQty     = {};
-  (data.player_inventory || []).forEach(i => {
-    _inventory[i.itemType]   = i.quantity;
-    _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
-    _paidQty[i.itemType]     = i.paidQuantity ?? 0;
-  });
   _gold = data.player_gold;
   startSyncTimer();
   startCountdown();
@@ -238,8 +253,7 @@ function tickCountdown() {
   const s = totalSecs % 60;
   const statusEl = document.getElementById('trade-session-status');
   if (statusEl) {
-    statusEl.textContent = `${t('ui.trade.status.active')} ${m}:${String(s).padStart(2, '0')}`;
-    statusEl.className   = 'trade-session-status active';
+    statusEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
   }
 }
 
@@ -247,9 +261,7 @@ function handleExpired() {
   stopSyncTimer();
   stopCountdown();
   _session = null;
-  const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) { statusEl.textContent = t('ui.trade.status.expired'); statusEl.className = 'trade-session-status'; }
-  document.getElementById('trade-table-container')?.classList.add('trade-expired');
+  document.getElementById('trade-prices-container')?.classList.add('hidden');
 }
 
 // Called on route navigation away
@@ -305,48 +317,80 @@ function updateIndicator(itemType, stock, baseQty) {
 }
 
 // ── Render ─────────────────────────────────────────
-function renderNoSession() {
-  const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) { statusEl.textContent = t('ui.trade.status.none'); statusEl.className = 'trade-session-status'; }
-  document.getElementById('trade-table-container').innerHTML = '';
+
+function renderActionsPanel() {
+  const container = document.getElementById('trade-actions-container');
+  if (!container) return;
+  container.innerHTML = `<div class="panel">
+    <div class="panel-header">${t('ui.trade.actions.header')}</div>
+    <div class="trade-actions-bar">
+      <button id="trade-gen-btn" class="trade-gen-btn" onclick="tradeGenerateSession()">${t('ui.trade.btn.search')}</button>
+    </div>
+  </div>`;
 }
 
-function renderAll() {
-  const statusEl = document.getElementById('trade-session-status');
-  if (statusEl) statusEl.className = 'trade-session-status active';
-  const container = document.getElementById('trade-table-container');
-  if (container) container.classList.remove('trade-expired');
-  renderTable();
-  updateGoldDisplays(_gold);
-}
-
-function renderTable() {
-  const container = document.getElementById('trade-table-container');
-  if (!container || !_items.length) return;
-  container.innerHTML = `<div class="panel" style="overflow-x:auto;margin-top:.5rem">
-    <table class="trade-table" id="trade-item-table">
-      <thead><tr>
-        <th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th><th>${t('ui.trade.col.sell')}</th><th>${t('ui.trade.col.buy')}</th>
-        <th class="stock-th"><div>${t('ui.trade.col.stock')}</div><div class="stock-legend"><span class="legend-low">low</span><div class="legend-grad"></div><span class="legend-high">high</span></div></th>
-      </tr></thead>
-      <tbody>${_items.map(renderRow).join('')}</tbody>
+function renderInventoryTable() {
+  const container = document.getElementById('trade-inventory-container');
+  if (!container) return;
+  container.innerHTML = `<div class="panel trade-inventory-panel">
+    <table class="trade-table" id="trade-inventory-table">
+      <thead>
+        <tr class="trade-section-header">
+          <th colspan="3"><div class="trade-section-header-inner">
+            <span>${t('ui.trade.section.inventory')}</span>
+            <span class="wheel-gold-val" id="trade-gold">– 💰</span>
+          </div></th>
+        </tr>
+        <tr><th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th></tr>
+      </thead>
+      <tbody>${_allTradeItems.map(renderInventoryRow).join('')}</tbody>
     </table>
   </div>`;
+}
+
+function renderPricesTable() {
+  if (!_items.length) return;
+  const container = document.getElementById('trade-prices-container');
+  if (!container) return;
+  container.innerHTML = `<div class="panel trade-prices-panel">
+    <table class="trade-table" id="trade-prices-table">
+      <thead>
+        <tr class="trade-section-header">
+          <th colspan="3"><div class="trade-section-header-inner">
+            <span>${t('ui.trade.section.prices')}</span>
+            <span id="trade-session-status" class="trade-session-status active"></span>
+          </div></th>
+        </tr>
+        <tr>
+          <th>${t('ui.trade.col.sell')}</th><th>${t('ui.trade.col.buy')}</th>
+          <th class="stock-th"><div>${t('ui.trade.col.stock')}</div><div class="stock-legend"><span class="legend-low">low</span><div class="legend-grad"></div><span class="legend-high">high</span></div></th>
+        </tr>
+      </thead>
+      <tbody>${_items.map(renderTradeRow).join('')}</tbody>
+    </table>
+  </div>`;
+  container.classList.remove('hidden');
   attachHoldListeners();
 }
 
-function renderRow(item) {
-  const stock             = _stocks[item.item_type] ?? 0;
-  const owned             = _inventory[item.item_type] ?? 0;
-  const avg               = _avgBuyPrice[item.item_type] ?? 0;
-  const paid              = _paidQty[item.item_type]     ?? 0;
-  const sp                = sellPx(item);
-  const bp                = buyPx(item);
-  const { pos, color }    = _indicatorStyle(stock, item.base_quantity);
-  return `<tr id="trade-row-${item.item_type}">
+function renderInventoryRow(item) {
+  const owned = _inventory[item.item_type] ?? 0;
+  const avg   = _avgBuyPrice[item.item_type] ?? 0;
+  const paid  = _paidQty[item.item_type]     ?? 0;
+  return `<tr>
     <td class="trade-icon">${item.icon}</td>
     <td>${item.display_name}</td>
     <td class="trade-amount"><span id="trade-owned-${item.item_type}">${owned}</span><span class="trade-avg" id="trade-avg-${item.item_type}"${paid <= 0 ? ' style="display:none"' : ''}> ⌀ ${Math.round(avg)} 💰</span></td>
+  </tr>`;
+}
+
+function renderTradeRow(item) {
+  const stock          = _stocks[item.item_type] ?? 0;
+  const owned          = _inventory[item.item_type] ?? 0;
+  const sp             = sellPx(item);
+  const bp             = buyPx(item);
+  const { pos, color } = _indicatorStyle(stock, item.base_quantity);
+  return `<tr id="trade-row-${item.item_type}">
     <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
     <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
     <td class="stock-th trade-amount">
@@ -359,31 +403,32 @@ function renderRow(item) {
   </tr>`;
 }
 
-function updateRow(itemType) {
-  const item = _items.find(i => i.item_type === itemType);
+export function updateInventoryRow(itemType) {
+  const owned_el = document.getElementById(`trade-owned-${itemType}`);
+  const avg_el   = document.getElementById(`trade-avg-${itemType}`);
+  if (owned_el) owned_el.textContent = _inventory[itemType] ?? 0;
+  if (avg_el) {
+    const avg  = _avgBuyPrice[itemType] ?? 0;
+    const paid = _paidQty[itemType]     ?? 0;
+    if (paid > 0) {
+      avg_el.textContent   = `⌀ ${Math.round(avg)} 💰`;
+      avg_el.style.display = '';
+    } else {
+      avg_el.textContent   = '';
+      avg_el.style.display = 'none';
+    }
+  }
+}
+
+export function updateTradeRow(itemType) {
+  const item  = _items.find(i => i.item_type === itemType);
   if (!item) return;
   const stock = _stocks[itemType] ?? 0;
   const owned = _inventory[itemType] ?? 0;
   const sp    = sellPx(item);
   const bp    = buyPx(item);
-
-  const owned_el = document.getElementById(`trade-owned-${itemType}`);
   const stock_el = document.getElementById(`trade-stock-${itemType}`);
-  const avg_el   = document.getElementById(`trade-avg-${itemType}`);
-  if (owned_el) owned_el.textContent = owned;
   if (stock_el) stock_el.textContent = stock;
-  if (avg_el) {
-    const avg  = _avgBuyPrice[itemType] ?? 0;
-    const paid = _paidQty[itemType]     ?? 0;
-    if (paid > 0) {
-      avg_el.textContent    = `⌀ ${Math.round(avg)} 💰`;
-      avg_el.style.display  = '';
-    } else {
-      avg_el.textContent    = '';
-      avg_el.style.display  = 'none';
-    }
-  }
-
   const row = document.getElementById(`trade-row-${itemType}`);
   if (!row) return;
   const sellBtn = row.querySelector('[data-dir="sell"]');
@@ -393,8 +438,13 @@ function updateRow(itemType) {
   updateIndicator(itemType, stock, item.base_quantity);
 }
 
+function updateRow(itemType) {
+  updateInventoryRow(itemType);
+  updateTradeRow(itemType);
+}
+
 function attachHoldListeners() {
-  document.querySelectorAll('#trade-item-table [data-item][data-dir]').forEach(btn => {
+  document.querySelectorAll('#trade-prices-table [data-item][data-dir]').forEach(btn => {
     btn.addEventListener('mousedown',   e => { e.preventDefault(); startHold(btn.dataset.item, btn.dataset.dir); });
     btn.addEventListener('touchstart',  e => { e.preventDefault(); startHold(btn.dataset.item, btn.dataset.dir); }, { passive: false });
     btn.addEventListener('mouseup',     () => stopHold());

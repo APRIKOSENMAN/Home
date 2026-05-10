@@ -386,48 +386,47 @@ Hier sind alle wiederkehrenden visuellen Bausteine der Website beschrieben. Dies
 ---
 
 ### Trade Table
-**Zweck:** Tabelle zum Anzeigen und Handeln von Items – zeigt den Lagerbestand des Händlers und den eigenen Bestand pro Item, mit Kauf- und Verkaufs-Button pro Zeile.
+**Zweck:** Zwei nebeneinander liegende Tabellen in einem gemeinsamen Panel, die zusammen wie eine einzige Trade-Tabelle wirken. Ermöglicht unabhängiges Synchronisieren von Inventar-Daten und Handelsdaten.
 
-**Aussehen:** Gleiche Kopfzeile wie alle anderen Tabellen (dunkelblaues Header-Band). Kauf-Button grün umrandet, Verkauf-Button rot umrandet. Eigene Menge (`trade-amount`) in Primärfarbe und Monospace-Schrift. Deaktivierte Buttons sind ausgegraut.
+**Komponenten:**
+- `#trade-inventory-table` – linke Tabelle: Icon, Item-Name, eigener Bestand
+- `#trade-prices-table` – rechte Tabelle: Verkaufen-Button, Kaufen-Button, Händler-Lager + Indikator
 
-**Spalten (fest):**
-| Spalte | CSS-Klasse | Beschreibung |
-|--------|-----------|--------------|
-| ITEM | – | Name des Items (Text) |
-| Icon | `.trade-icon` | Emoji/Symbol des Items, zentriert |
-| STOCK | `.col-num` | Menge beim Händler |
-| Kaufen | – | `.trade-buy-btn` – disabled wenn Stock = 0 |
-| Verkaufen | – | `.trade-sell-btn` – disabled wenn eigene Menge = 0 |
-| BESITZ | `.col-num .trade-amount` | Eigene Menge, blau hervorgehoben |
+**Aussehen:** Dunkelblaues Header-Band über beide Tabellen. Trenner zwischen den Tabellen ist eine dünne Linie (`border-left`). Eigene Menge in Primärfarbe (Monospace). Deaktivierte Buttons sind ausgegraut. Zeilenhöhe ist auf 52px fixiert damit beide Tabellen zeilengenau ausgerichtet bleiben.
 
-**Mobile vs. Desktop:** TODO – horizontales Scrollen bei vielen Items nötig.
+**Update-Funktionen (JS):**
+- `updateInventoryRow(itemType)` – aktualisiert nur Menge + Durchschnittspreis (linke Seite)
+- `updateTradeRow(itemType)` – aktualisiert Buttons, Stock, Indikator (rechte Seite)
+- `updateRow(itemType)` – ruft beide auf (Kurzform für vollständiges Update)
 
-**Wann verwenden:** Überall wo Spieler Items kaufen oder verkaufen können (Shop, Marktplatz).
+**Mobile vs. Desktop:** Horizontales Scrollen über das Panel-Wrapper (`overflow-x:auto`).
 
 **HTML-Muster:**
 ```html
-<table class="trade-table">
-  <thead>
-    <tr>
-      <th>ITEM</th>
-      <th></th>
-      <th class="col-num">STOCK</th>
-      <th></th>
-      <th></th>
-      <th class="col-num">BESITZ</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Gold Bar</td>
-      <td class="trade-icon">🥇</td>
-      <td class="col-num">42</td>
-      <td><button class="trade-buy-btn">Kaufen</button></td>
-      <td><button class="trade-sell-btn">Verkaufen</button></td>
-      <td class="col-num trade-amount">5</td>
-    </tr>
-  </tbody>
-</table>
+<div class="panel trade-tables-panel">
+  <div class="trade-tables-wrapper">
+    <table class="trade-table" id="trade-inventory-table">
+      <thead><tr><th></th><th>ITEM</th><th>BESITZ</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="trade-icon">🥇</td>
+          <td>Gold Bar</td>
+          <td class="trade-amount"><span id="trade-owned-gold_bar">5</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <table class="trade-table" id="trade-prices-table">
+      <thead><tr><th>VERKAUFEN</th><th>KAUFEN</th><th class="stock-th">LAGER</th></tr></thead>
+      <tbody>
+        <tr id="trade-row-gold_bar">
+          <td><button class="trade-sell-btn" data-item="gold_bar" data-dir="sell">95 💰</button></td>
+          <td><button class="trade-buy-btn"  data-item="gold_bar" data-dir="buy">105 💰</button></td>
+          <td class="stock-th trade-amount"><div id="trade-stock-gold_bar">42</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 ```
 
 ---

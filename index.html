@@ -362,17 +362,11 @@
 
       <!-- Handel -->
       <div id="view-trade" class="view hidden">
-        <div class="panel">
-          <div class="panel-header" data-i18n="ui.trade.header">HÄNDLER</div>
-          <div class="trade-session-bar">
-            <span id="trade-session-status" class="trade-session-status" data-i18n="ui.trade.status.none">Kein aktiver Händler</span>
-            <span class="wheel-gold-val" id="trade-gold">– 💰</span>
-          </div>
-          <div class="trade-session-bar" style="border-bottom:none;padding-top:.4rem">
-            <button id="trade-gen-btn" class="trade-gen-btn" onclick="tradeGenerateSession()" data-i18n="ui.trade.btn.find">HÄNDLER SUCHEN</button>
-          </div>
+        <div id="trade-actions-container"></div>
+        <div id="trade-table-area">
+          <div id="trade-inventory-container"></div>
+          <div id="trade-prices-container" class="hidden"></div>
         </div>
-        <div id="trade-table-container"></div>
       </div>
 
     </main>

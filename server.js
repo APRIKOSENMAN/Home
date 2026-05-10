@@ -792,6 +792,30 @@ app.get('/api/wheel/log', requireAuth, async (req, res) => {
 
 const LOCALES = require('./data/locales/en.json');
 
+// GET /api/trade/inventory — player's tradeable items with icons, names, quantities
+app.get('/api/trade/inventory', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity"
+       FROM storage_items WHERE username=$1`, [req.session.username]);
+    const invMap = Object.fromEntries(rows.map(r => [r.itemType, r]));
+    const items = Object.entries(ITEMS)
+      .filter(([, def]) => def.tradable)
+      .map(([id, def]) => ({
+        item_type:    id,
+        icon:         def.icon,
+        display_name: LOCALES[`items.${id}.name`] ?? id,
+        quantity:     invMap[id]?.quantity     ?? 0,
+        avgBuyPrice:  invMap[id]?.avgBuyPrice  ?? 0,
+        paidQuantity: invMap[id]?.paidQuantity ?? 0,
+      }));
+    res.json({ items });
+  } catch (e) {
+    console.error('GET /api/trade/inventory error:', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 // ── Dynamic Trade Sessions ────────────────────────
 
 function gaussianRandom(mean, stddev) {

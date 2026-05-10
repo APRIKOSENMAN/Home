@@ -76,9 +76,13 @@
 
   "ui.trade.header":     "TRADER",
   "ui.trade.btn.find":   "FIND NEW TRADER",
+  "ui.trade.btn.search":        "SEARCH RANDOM TRADE",
+  "ui.trade.actions.header":    "TRADE ACTIONS",
   "ui.trade.status.none":    "No active trader",
   "ui.trade.status.active":  "Trader active",
   "ui.trade.status.expired": "Trader expired",
+  "ui.trade.section.inventory": "Player Inventory",
+  "ui.trade.section.prices":    "Trade with Random",
   "ui.trade.col.item":   "ITEM",
   "ui.trade.col.owned":  "OWNED",
   "ui.trade.col.sell":   "SELL",
