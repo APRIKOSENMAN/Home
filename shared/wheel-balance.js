@@ -15,7 +15,7 @@ const WHEEL_BALANCE = {
   spin_cost: 5,
 
   jackpot: {
-    prob:  0.5,      // fixes 5%-Kuchenstück, immer vorhanden
+    prob:  0.05,      // fixes 5%-Kuchenstück, immer vorhanden
     color: '#e3f307', // client-only
 
     // Jackpot-Wheel: Runden bis "ENDE" gewürfelt wird.
