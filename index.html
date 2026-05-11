@@ -244,6 +244,19 @@
           <div id="jackpot-header" class="jackpot-header hidden">
             <div class="jackpot-round-label" id="jackpot-round-label">RUNDE 1</div>
             <div class="jackpot-formula" id="jackpot-formula"></div>
+            <div class="jackpot-win hidden" id="jackpot-win"></div>
+          </div>
+          <div id="don-wrap" class="hidden">
+            <div class="aktivier-panel" id="don-aktivier">
+              <div class="aktivier-panel-hdr">
+                <input type="checkbox" class="aktivier-check" id="don-aktivier-check"
+                       onchange="this.closest('.aktivier-panel').classList.toggle('is-on', this.checked)" />
+              </div>
+              <div class="aktivier-panel-body">
+                <button id="don-btn" class="don-btn" onclick="doubleOrNothing()">⚡ DOUBLE OR NOTHING</button>
+                <canvas id="don-canvas" width="120" height="120"></canvas>
+              </div>
+            </div>
           </div>
           <div class="wheel-body">
             <div class="wheel-stage">
@@ -256,12 +269,7 @@
                 <span class="wheel-gold-val" id="wheel-gold">–</span>
               </div>
               <div class="wheel-seed-row" id="wheel-seed-row"></div>
-              <div class="wheel-btn-row" id="wheel-btn-row">
-                <button id="btn-wgen" onclick="wheelGenerate()">
-                  &#9889; GENERATE <span class="wheel-cost">50 &#128176;</span>
-                </button>
-              </div>
-              <div class="wheel-result hidden" id="wheel-result"></div>
+              <div class="wheel-btn-row" id="wheel-btn-row"></div>
               <p class="error" id="wheel-error"></p>
             </div>
           </div>

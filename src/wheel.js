@@ -72,6 +72,11 @@ let wheelRot      = 0;
 export let wheelRaf = null;
 let wheelFastFrom = null;
 
+let currentSeed   = null;
+let previewActive = false;
+let previewSaved  = null; // { segs, rot }
+let previewSeed   = null;
+
 let slData        = [];
 let postedSeeds   = new Set();
 let lastPostTime  = 0;
@@ -83,6 +88,19 @@ let jpProduct     = 1;
 let jpMultipliers = [];
 let jpRaf         = null;
 let jpRot         = 0;
+let jpRevealCount = 0;
+let jpRevealTimer = null;
+
+// ── Double-or-Nothing state ────────────────────────
+let jpDonUsed    = false;   // reset per round
+let jpDonFactors = [];      // accumulated across rounds, cleared on new jackpot session
+let jpDonRaf     = null;
+let jpDonRot     = 0;
+
+const DON_SEGS = [
+  { prob: 0.51, label: '2×', color: '#43a047' },
+  { prob: 0.49, label: '0×', color: '#e53935' },
+];
 
 // ── Wheel math ────────────────────────────────────
 function mulberry32(seed) {
@@ -176,19 +194,17 @@ function drawWheel() {
     ctx.shadowColor = 'rgba(0,0,0,.7)';
     ctx.shadowBlur  = 4;
     ctx.textAlign   = 'right';
-    ctx.fillText(seg.isJackpot ? '★JP' : seg.reward === 0 ? '0' : `${seg.reward}`, R - 10, (fs | 0) / 3);
+    if (seg.isJackpot) {
+      ctx.fillText('FREE',  R - 10, -(fs | 0) * 0.55);
+      ctx.fillText('SPINS', R - 10,  (fs | 0) * 0.55);
+    } else {
+      ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 10, (fs | 0) / 3);
+    }
     ctx.restore();
 
     a += arc;
   });
 
-  ctx.beginPath();
-  ctx.arc(0, 0, 20, 0, Math.PI * 2);
-  ctx.fillStyle = '#0d1a28';
-  ctx.fill();
-  ctx.strokeStyle = '#c8d8e8';
-  ctx.lineWidth = 3;
-  ctx.stroke();
   ctx.restore();
 
   ctx.beginPath();
@@ -264,6 +280,12 @@ function drawMiniWheel(canvas, segs, winIdx) {
 }
 
 // ── Jackpot Wheel ─────────────────────────────────
+function jpArcSizes() {
+  const tickets = WB.jackpot.field_tickets;
+  const total   = tickets.reduce((a, b) => a + b, 0);
+  return tickets.map(t => t / total * Math.PI * 2);
+}
+
 function drawJackpotWheel() {
   const canvas = document.getElementById('jackpot-canvas');
   if (!canvas) return;
@@ -273,8 +295,7 @@ function drawJackpotWheel() {
   const R   = S / 2 - 26;
   const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
   const fields   = WB.jackpot.rounds[roundIdx].fields;
-  const n        = fields.length;
-  const arcSize  = Math.PI * 2 / n;
+  const arcSizes = jpArcSizes();
 
   ctx.clearRect(0, 0, S, S);
   ctx.beginPath();
@@ -287,20 +308,22 @@ function drawJackpotWheel() {
   ctx.rotate(jpRot);
 
   let a = -Math.PI / 2;
-  fields.forEach(field => {
+  fields.forEach((field, i) => {
+    if (i >= jpRevealCount) { a += arcSizes[i]; return; }
+    const arc = arcSizes[i];
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, R, a, a + arcSize);
+    ctx.arc(0, 0, R, a, a + arc);
     ctx.closePath();
-    ctx.fillStyle = field.color;
+    ctx.fillStyle = WB.jackpot.field_colors[i];
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     ctx.save();
-    ctx.rotate(a + arcSize / 2);
-    const label = field.end ? 'ENDE' : `×${field.reward}`;
+    ctx.rotate(a + arc / 2);
+    const label = field.end ? 'CASH OUT' : `${field.reward}×`;
     const fs    = field.end ? 18 : 26;
     ctx.font = `bold ${fs}px Segoe UI,sans-serif`;
     ctx.fillStyle = '#fff';
@@ -309,16 +332,9 @@ function drawJackpotWheel() {
     ctx.textAlign   = 'right';
     ctx.fillText(label, R - 10, fs / 3);
     ctx.restore();
-    a += arcSize;
+    a += arc;
   });
 
-  ctx.beginPath();
-  ctx.arc(0, 0, 20, 0, Math.PI * 2);
-  ctx.fillStyle = '#0d1a28';
-  ctx.fill();
-  ctx.strokeStyle = '#c8d8e8';
-  ctx.lineWidth = 3;
-  ctx.stroke();
   ctx.restore();
 
   ctx.beginPath();
@@ -333,26 +349,148 @@ function drawJackpotWheel() {
   ctx.stroke();
 }
 
+function drawDonWheel(rot) {
+  const canvas = document.getElementById('don-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const S   = canvas.width;
+  const cx  = S / 2, cy = S / 2;
+  const R   = S / 2 - 6;
+
+  ctx.clearRect(0, 0, S, S);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#162032';
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+
+  let a = -Math.PI / 2;
+  DON_SEGS.forEach(seg => {
+    const arc = seg.prob * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, a, a + arc);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(a + arc / 2);
+    ctx.font = 'bold 13px Segoe UI,sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'right';
+    ctx.fillText(seg.label, R - 5, 5);
+    ctx.restore();
+
+    a += arc;
+  });
+
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy - R - 2);
+  ctx.lineTo(cx + 6, cy - R - 2);
+  ctx.lineTo(cx, cy - R + 8);
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
+}
+
+function donTargetRot(segIdx) {
+  let cum = 0;
+  for (let i = 0; i < segIdx; i++) cum += DON_SEGS[i].prob * Math.PI * 2;
+  const arc  = DON_SEGS[segIdx].prob * Math.PI * 2;
+  const land = cum + arc * 0.2 + Math.random() * arc * 0.6;
+  const base = -land;
+  const extra = Math.ceil((jpDonRot + Math.PI * 2 * 5 - base) / (Math.PI * 2));
+  return base + extra * Math.PI * 2;
+}
+
+function animateDonSpin(winIdx, onDone) {
+  if (jpDonRaf) cancelAnimationFrame(jpDonRaf);
+  const target = donTargetRot(winIdx);
+  const start  = jpDonRot;
+  const t0     = performance.now();
+  const dur    = 1400 + Math.random() * 600;
+  function ease(p) { return 1 - Math.pow(1 - p, 5); }
+  function frame(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    jpDonRot = start + (target - start) * ease(t);
+    drawDonWheel(jpDonRot);
+    if (t >= 1) { jpDonRaf = null; onDone(); }
+    else         { jpDonRaf = requestAnimationFrame(frame); }
+  }
+  jpDonRaf = requestAnimationFrame(frame);
+}
+
+export function doubleOrNothing() {
+  if (!document.getElementById('don-aktivier')?.classList.contains('is-on')) return;
+  if (jpDonUsed) return;
+  jpDonUsed = true;
+  const btn = document.getElementById('don-btn');
+  if (btn) btn.disabled = true;
+  initAudio();
+  playClick();
+
+  const winIdx = Math.random() < DON_SEGS[0].prob ? 0 : 1;
+  animateDonSpin(winIdx, () => {
+    const factor = winIdx === 0 ? 2 : 0;
+    jpDonFactors.push(factor);
+    updateJackpotFormula();
+    if (factor === 2) {
+      playJackpotChing(2);
+    } else {
+      for (let i = 0; i < 2; i++) setTimeout(() => playWinSound(0), i * 500);
+    }
+  });
+}
+
+function jpRevealAnimation(onDone) {
+  if (jpRevealTimer) clearInterval(jpRevealTimer);
+  const n = WB.jackpot.rounds[Math.min(jpRound, WB.jackpot.rounds.length - 1)].fields.length;
+  jpRevealCount = 1;
+  drawJackpotWheel();
+  jpRevealTimer = setInterval(() => {
+    jpRevealCount++;
+    drawJackpotWheel();
+    if (jpRevealCount >= n) {
+      clearInterval(jpRevealTimer);
+      jpRevealTimer = null;
+      onDone();
+    }
+  }, 300);
+}
+
 function updateJackpotFormula() {
   const el = document.getElementById('jackpot-formula');
   if (!el) return;
-  if (jpMultipliers.length === 0 && jpProduct <= 1) {
+  const donProduct  = jpDonFactors.reduce((a, b) => a * b, 1);
+  const basePayout  = Math.round(WB.spin_cost * jpProduct);
+  const finalPayout = Math.round(basePayout * donProduct);
+
+  if (jpMultipliers.length === 0 && jpDonFactors.length === 0) {
     el.textContent = `${WB.spin_cost} 💰`;
     return;
   }
-  const payout = Math.round(WB.spin_cost * jpProduct);
-  if (jpMultipliers.length > 0) {
-    el.innerHTML = `${[WB.spin_cost, ...jpMultipliers].join(' × ')} = <strong>${payout}</strong> 💰`;
-  } else {
-    el.innerHTML = `${WB.spin_cost} × … = <strong>${Math.round(WB.spin_cost * jpProduct)}</strong> 💰`;
-  }
+
+  const donPrefix = jpDonFactors.length > 0 ? jpDonFactors.map(f => `${f}×`).join(' × ') + ' × ' : '';
+  el.innerHTML = `${donPrefix}${[WB.spin_cost, ...jpMultipliers].join(' × ')} = <strong>${finalPayout}</strong> 💰`;
 }
 
 function showJackpotPanel(round = 0, product = 1) {
-  jpRound       = round;
-  jpProduct     = product;
-  jpMultipliers = [];
-  jpRot         = 0;
+  jpRound         = round;
+  jpProduct       = product;
+  jpMultipliers   = [];
+  jpRot           = 0;
+  jpDonUsed    = false;
+  jpDonFactors = [];
+  jpDonRot     = 0;
 
   document.getElementById('wheel-canvas').classList.add('hidden');
   document.getElementById('jackpot-canvas').classList.remove('hidden');
@@ -362,37 +500,49 @@ function showJackpotPanel(round = 0, product = 1) {
   updateJackpotFormula();
 
   document.getElementById('wheel-btn-row').innerHTML =
-    `<button id="jackpot-spin-btn" onclick="jackpotSpin()">&#9654; DREHEN</button>`;
-  document.getElementById('wheel-result').classList.add('hidden');
+    `<button id="jackpot-spin-btn" onclick="jackpotSpin()" disabled>&#9654; DREHEN</button>`;
+  document.getElementById('jackpot-win').classList.add('hidden');
   document.getElementById('wheel-error').textContent = '';
   document.getElementById('wheel-seed-row').textContent = '';
 
-  drawJackpotWheel();
+  const donPanel = document.getElementById('don-aktivier');
+  donPanel.classList.remove('is-on');
+  document.getElementById('don-aktivier-check').checked = false;
+  document.getElementById('don-btn').disabled = false;
+  document.getElementById('don-wrap').classList.remove('hidden');
+  drawDonWheel(0);
+
+  jpRevealAnimation(() => { document.getElementById('jackpot-spin-btn').disabled = false; });
 }
 
 function hideJackpotPanel() {
   document.getElementById('jackpot-canvas').classList.add('hidden');
   document.getElementById('wheel-canvas').classList.remove('hidden');
   document.getElementById('jackpot-header').classList.add('hidden');
+  document.getElementById('jackpot-win').classList.add('hidden');
+  document.getElementById('don-wrap').classList.add('hidden');
   document.getElementById('wheel-panel-header').textContent = 'WHEEL OF FORTUNE';
 }
 
 function jpTargetRot(fieldIdx) {
-  const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
-  const n        = WB.jackpot.rounds[roundIdx].fields.length;
-  const arcSize  = Math.PI * 2 / n;
-  const land     = fieldIdx * arcSize + arcSize * 0.15 + Math.random() * arcSize * 0.70;
+  const arcSizes = jpArcSizes();
+  const start    = arcSizes.slice(0, fieldIdx).reduce((a, b) => a + b, 0);
+  const arc      = arcSizes[fieldIdx];
+  const land     = start + arc * 0.15 + Math.random() * arc * 0.70;
   const base     = -land;
   const extra    = Math.ceil((jpRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
   return base + extra * Math.PI * 2;
 }
 
 function jpCurrentField(rot) {
-  const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
-  const n        = WB.jackpot.rounds[roundIdx].fields.length;
-  const arcSize  = Math.PI * 2 / n;
+  const arcSizes = jpArcSizes();
   const angle    = ((-rot) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-  return Math.floor(angle / arcSize) % n;
+  let cum = 0;
+  for (let i = 0; i < arcSizes.length; i++) {
+    cum += arcSizes[i];
+    if (angle < cum) return i;
+  }
+  return arcSizes.length - 1;
 }
 
 function animateJackpotSpin(fieldIdx, onDone) {
@@ -417,44 +567,67 @@ function animateJackpotSpin(fieldIdx, onDone) {
 
 export async function jackpotSpin() {
   document.getElementById('jackpot-spin-btn').disabled = true;
-  document.getElementById('wheel-result').classList.add('hidden');
+  document.getElementById('wheel-error').textContent = '';
 
   const data = await api('POST', '/api/jackpot/spin');
   if (data.error) {
-    const el = document.getElementById('wheel-result');
-    el.textContent = data.error;
-    el.classList.remove('hidden');
+    document.getElementById('wheel-error').textContent = data.error;
     document.getElementById('jackpot-spin-btn').disabled = false;
     return;
   }
 
   animateJackpotSpin(data.fieldIndex, () => {
-    const el = document.getElementById('wheel-result');
-    el.classList.remove('hidden', 'zero', 'jackpot-hit');
     if (data.end) {
-      playWinSound(data.total);
-      el.textContent = `★ JACKPOT +${data.total} GOLD ★`;
-      el.classList.add('jackpot-hit');
-      setGold(data.gold);
-      setTimeout(() => {
-        hideJackpotPanel();
-        renderWheelButtons(false);
-      }, 3500);
+      for (let i = 0; i < 3; i++) setTimeout(() => playWinSound(0), i * 500);
     } else {
-      jpRound    = data.round;
-      jpProduct  = data.accumulated;
-      jpMultipliers.push(data.multiplier);
-      updateJackpotFormula();
-      const labelEl = document.getElementById('jackpot-round-label');
-      labelEl.textContent = `RUNDE ${data.round + 1}`;
-      labelEl.classList.remove('jp-round-pulse');
-      void labelEl.offsetWidth;
-      labelEl.classList.add('jp-round-pulse');
       playJackpotChing(data.round + 1);
-      el.textContent = `× ${data.multiplier}`;
-      drawJackpotWheel();
-      document.getElementById('jackpot-spin-btn').disabled = false;
     }
+
+    const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
+    const field    = WB.jackpot.rounds[roundIdx].fields[data.fieldIndex];
+    const label    = field.end ? 'CASH OUT' : `${field.reward}×`;
+    animateSelect({
+      canvas: document.getElementById('jackpot-canvas'),
+      frozenRot: jpRot,
+      winIdx: data.fieldIndex,
+      arcSizes: jpArcSizes(),
+      colors: WB.jackpot.field_colors,
+      label,
+      onDone: () => {
+        if (data.end) {
+          const donProduct   = jpDonFactors.reduce((a, b) => a * b, 1);
+          const finalPayout  = Math.round(data.total * donProduct);
+          const adjustedGold = data.gold + Math.round(data.total * (donProduct - 1));
+          const winEl = document.getElementById('jackpot-win');
+          winEl.textContent = `★ +${finalPayout} GOLD ★`;
+          winEl.classList.remove('hidden');
+          slData.unshift({ spunAt: new Date().toISOString(), seed: 'JACKPOT', reward: finalPayout, segmentIdx: null, isJackpotEntry: true });
+          renderWheelLog();
+          setGold(adjustedGold);
+          setTimeout(() => {
+            hideJackpotPanel();
+            wheelGenerate();
+          }, 3500);
+        } else {
+          jpRound    = data.round;
+          jpProduct  = data.accumulated;
+          jpMultipliers.push(data.multiplier);
+          jpDonUsed = false;
+          updateJackpotFormula();
+          const labelEl = document.getElementById('jackpot-round-label');
+          labelEl.textContent = `RUNDE ${data.round + 1}`;
+          labelEl.classList.remove('jp-round-pulse');
+          void labelEl.offsetWidth;
+          labelEl.classList.add('jp-round-pulse');
+          jpRevealAnimation(() => {
+            document.getElementById('jackpot-spin-btn').disabled = false;
+            if (document.getElementById('don-aktivier')?.classList.contains('is-on')) {
+              document.getElementById('don-btn').disabled = false;
+            }
+          });
+        }
+      },
+    });
   });
 }
 
@@ -497,24 +670,181 @@ function animateSpin(segIdx, onDone) {
   wheelRaf = requestAnimationFrame(frame);
 }
 
-// ── UI helpers ────────────────────────────────────
-function renderWheelButtons(hasSeed) {
-  const row = document.getElementById('wheel-btn-row');
-  if (hasSeed) {
-    row.innerHTML = `
-      <button id="wbtn-spin" onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>
-      <span class="wheel-or">OR</span>
-      <button id="wbtn-regen" class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>`;
-    setTimeout(() => document.getElementById('wbtn-spin')?.focus(), 50);
-  } else {
-    row.innerHTML = `
-      <button id="wbtn-gen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>`;
-    setTimeout(() => document.getElementById('wbtn-gen')?.focus(), 50);
+function animateSelect({ canvas, frozenRot, winIdx, arcSizes, colors, label, onDone }) {
+  const S   = canvas.width;
+  const cx  = S / 2, cy = S / 2;
+  const R   = S / 2 - 26;
+  const ctx = canvas.getContext('2d');
+
+  const cum = [0];
+  for (let i = 0; i < arcSizes.length; i++) cum.push(cum[i] + arcSizes[i]);
+
+  // Normalize winning slice mid-angle to [-π, π] for shortest text rotation
+  const θRaw = frozenRot - Math.PI / 2 + cum[winIdx] + arcSizes[winIdx] / 2;
+  const θ    = ((θRaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+
+  const lp  = (a, b, t) => a + (b - a) * t;
+  const ez  = p => 1 - Math.pow(1 - p, 3);
+  const lines = label.split('\n');
+  const t0  = performance.now();
+
+  function frame(now) {
+    const p  = Math.min((now - t0) / 500, 1);
+    const et = ez(p);
+
+    ctx.clearRect(0, 0, S, S);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#162032';
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Frozen non-winning slices (will get covered by expanding winner)
+    let a = frozenRot - Math.PI / 2;
+    arcSizes.forEach((arc, i) => {
+      if (i !== winIdx) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, R, a, a + arc);
+        ctx.closePath();
+        ctx.fillStyle = colors[i];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      a += arc;
+    });
+
+    // Winning slice expanding symmetrically about its midpoint
+    const winArc = lp(arcSizes[winIdx], Math.PI * 2, et);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, θ - winArc / 2, θ + winArc / 2);
+    ctx.closePath();
+    ctx.fillStyle = colors[winIdx];
+    ctx.fill();
+    if (winArc < Math.PI * 1.99) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Label: moves from slice area toward center, rotates to horizontal, grows
+    const tx  = lp(0.65 * R * Math.cos(θ), 0, et);
+    const ty  = lp(0.65 * R * Math.sin(θ), 0, et);
+    const fs  = lp(26, 60, et) | 0;
+    const rot = lp(θ, 0, et);
+
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.rotate(rot);
+    ctx.font         = `bold ${fs}px Segoe UI,sans-serif`;
+    ctx.fillStyle    = '#fff';
+    ctx.shadowColor  = 'rgba(0,0,0,.7)';
+    ctx.shadowBlur   = 4;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    const lineH = fs * 1.15;
+    lines.forEach((line, li) => {
+      ctx.fillText(line, 0, (li - (lines.length - 1) / 2) * lineH);
+    });
+    ctx.restore();
+
+    ctx.restore();
+
+    // Pointer arrow (fixed)
+    ctx.beginPath();
+    ctx.moveTo(cx - 15, cy - R - 4);
+    ctx.lineTo(cx + 15, cy - R - 4);
+    ctx.lineTo(cx, cy - R + 22);
+    ctx.closePath();
+    ctx.fillStyle   = '#e53935';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+
+    if (p < 1) requestAnimationFrame(frame);
+    else        setTimeout(onDone, 300);
   }
+
+  requestAnimationFrame(frame);
+}
+
+// ── UI helpers ────────────────────────────────────
+function renderWheelButtons() {
+  document.getElementById('wheel-btn-row').innerHTML =
+    `<button id="wbtn-spin" onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>`;
+  setTimeout(() => document.getElementById('wbtn-spin')?.focus(), 50);
 }
 
 function setWheelBtnsDisabled(on) {
   document.querySelectorAll('#wheel-btn-row button').forEach(b => b.disabled = on);
+}
+
+function updateSeedRow() {
+  const row = document.getElementById('wheel-seed-row');
+  if (!row) return;
+  if (previewActive) {
+    row.innerHTML =
+      `<span class="seed-val seed-preview">${previewSeed}</span>
+       <button class="seed-icon-btn" title="Anderen Seed" onclick="openSeedLookup()">&#128269;</button>
+       <button class="seed-exit-btn" title="Vorschau beenden" onclick="exitSeedPreview()">&#10005;</button>`;
+  } else if (currentSeed) {
+    row.innerHTML =
+      `<span class="seed-val">${currentSeed}</span>
+       <button class="seed-icon-btn" title="Seed nachschlagen" onclick="openSeedLookup()">&#128269;</button>`;
+  } else {
+    row.innerHTML = '';
+  }
+}
+
+export function openSeedLookup() {
+  const row = document.getElementById('wheel-seed-row');
+  row.innerHTML =
+    `<input id="seed-lookup-input" class="seed-lookup-input" type="number" placeholder="Seed eingeben…" />
+     <button class="seed-exit-btn" title="Abbrechen" onclick="cancelSeedLookup()">&#10005;</button>`;
+  const inp = document.getElementById('seed-lookup-input');
+  inp?.focus();
+  inp?.addEventListener('keydown', e => { if (e.key === 'Enter') applySeedLookup(); });
+}
+
+export function applySeedLookup() {
+  const val = document.getElementById('seed-lookup-input')?.value.trim();
+  if (!val || isNaN(parseInt(val, 10))) { cancelSeedLookup(); return; }
+  if (!previewActive) {
+    previewSaved = { segs: wheelSegs, rot: wheelRot };
+    previewActive = true;
+  }
+  previewSeed = val;
+  wheelSegs = buildWheelV1(val);
+  wheelRot  = 0;
+  drawWheel();
+  updateSeedRow();
+  document.getElementById('wheel-btn-row').innerHTML = '';
+}
+
+export function cancelSeedLookup() {
+  updateSeedRow();
+  if (!previewActive) renderWheelButtons();
+}
+
+export function exitSeedPreview() {
+  previewActive = false;
+  previewSeed   = null;
+  if (previewSaved) {
+    wheelSegs = previewSaved.segs;
+    wheelRot  = previewSaved.rot;
+    previewSaved = null;
+    drawWheel();
+    updateSeedRow();
+    renderWheelButtons();
+  } else {
+    wheelGenerate();
+  }
 }
 
 // ── Public API ────────────────────────────────────
@@ -525,40 +855,38 @@ export async function loadWheel() {
   ]);
   setGold(data.gold);
   if (data.seed) {
+    currentSeed = data.seed;
     wheelSegs = buildWheelV1(data.seed);
     drawWheel();
-    document.getElementById('wheel-seed-row').textContent = `SEED v${data.version} · ${data.seed}`;
-    renderWheelButtons(true);
+    updateSeedRow();
+    renderWheelButtons();
   } else {
-    wheelSegs = null;
-    drawWheel();
-    document.getElementById('wheel-seed-row').textContent = '';
-    renderWheelButtons(false);
+    wheelGenerate();
   }
-  document.getElementById('wheel-result').classList.add('hidden');
+
   document.getElementById('wheel-error').textContent = '';
   if (jpData.active) showJackpotPanel(jpData.round, parseFloat(jpData.accumulated));
   loadWheelLog();
 }
 
 export async function wheelGenerate() {
-  initAudio();
-  playClick();
   setWheelBtnsDisabled(true);
   document.getElementById('wheel-error').textContent = '';
   const data = await api('POST', '/api/wheel/generate');
   if (data.error) {
     document.getElementById('wheel-error').textContent = data.error;
-    setWheelBtnsDisabled(false);
     return;
   }
+  currentSeed = data.seed;
+  previewActive = false;
+  previewSeed   = null;
+  previewSaved  = null;
   wheelSegs = buildWheelV1(data.seed);
   wheelRot  = 0;
   drawWheel();
-  document.getElementById('wheel-gold').textContent     = `${data.gold} 💰`;
-  document.getElementById('wheel-seed-row').textContent = `SEED v${data.version} · ${data.seed}`;
-  document.getElementById('wheel-result').classList.add('hidden');
-  renderWheelButtons(true);
+  document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
+  updateSeedRow();
+  renderWheelButtons();
 }
 
 export async function wheelSpin() {
@@ -566,7 +894,7 @@ export async function wheelSpin() {
   initAudio();
   playClick();
   setWheelBtnsDisabled(true);
-  document.getElementById('wheel-result').classList.add('hidden');
+
   document.getElementById('wheel-error').textContent = '';
 
   const data = await api('POST', '/api/wheel/spin');
@@ -577,28 +905,31 @@ export async function wheelSpin() {
   }
 
   animateSpin(data.segmentIndex, () => {
-    playWinSound(data.reward);
-    const el = document.getElementById('wheel-result');
-    el.classList.remove('hidden', 'zero');
-    if (data.jackpot) {
-      el.textContent = '★ JACKPOT ★';
-      el.classList.add('jackpot-hit');
-    } else if (data.reward === 0) {
-      el.textContent = '— 0 GOLD —';
-      el.classList.add('zero');
-    } else {
-      el.textContent = `+ ${data.reward} GOLD`;
-    }
-    setGold(data.gold);
-    wheelSegs = null;
-    document.getElementById('wheel-seed-row').textContent = '';
-    renderWheelButtons(false);
-    if (data.jackpot) {
-      setTimeout(() => showJackpotPanel(0, 1), 800);
-    } else {
-      setWheelBtnsDisabled(false);
-    }
-    loadWheelLog();
+    if (data.jackpot) playJackpotChing(5);
+    else              playWinSound(data.reward);
+
+    const seg      = wheelSegs[data.segmentIndex];
+    const arcSizes = wheelSegs.map(s => s.prob * Math.PI * 2);
+    const label    = seg.isJackpot ? 'FREE\nSPINS' : seg.reward === 0 ? '0' : `${seg.reward}`;
+    animateSelect({
+      canvas: document.getElementById('wheel-canvas'),
+      frozenRot: wheelRot,
+      winIdx: data.segmentIndex,
+      arcSizes,
+      colors: wheelSegs.map(s => s.color),
+      label,
+      onDone: () => {
+        setGold(data.gold);
+        wheelSegs = null;
+        document.getElementById('wheel-seed-row').textContent = '';
+        if (data.jackpot) {
+          setTimeout(() => showJackpotPanel(0, 1), 800);
+        } else {
+          wheelGenerate();
+        }
+        loadWheelLog();
+      },
+    });
   });
 }
 
@@ -670,7 +1001,15 @@ export function renderWheelLog(entries) {
           <th></th>
         </tr></thead>
         <tbody>${data.map(e => {
-          const date   = new Date(e.spunAt).toLocaleString('de-DE');
+          const date = new Date(e.spunAt).toLocaleString('de-DE');
+          if (e.isJackpotEntry) {
+            return `<tr>
+              <td class="col-num">${date}</td>
+              <td class="log-seed" style="color:#e8c84a;font-weight:700">★ JACKPOT</td>
+              <td class="col-num log-jackpot">+${e.reward} &#127922;</td>
+              <td></td>
+            </tr>`;
+          }
           const cls    = e.reward === 0 ? 'log-zero' : e.reward >= 120 ? 'log-jackpot' : '';
           const posted = postedSeeds.has(e.seed);
           return `<tr>

@@ -8,7 +8,7 @@ import { loadQuests } from './quests.js';
 import { loadProfile, deletePost, updateProfileStats, handleSearch } from './profile.js';
 import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoardView, sortPostsTable, renderPostsTable, renderPosts, vote } from './board.js';
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
-import { loadWheel, wheelGenerate, wheelSpin, jackpotSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
+import { loadWheel, wheelGenerate, wheelSpin, jackpotSpin, doubleOrNothing, openSeedLookup, applySeedLookup, cancelSeedLookup, exitSeedPreview, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
 import { loadTrade, tradeGenerateSession, leaveTrade, stopSyncTimer } from './trade.js';
 import { startGoldPolling, stopGoldPolling } from './gold.js';
 import { traderPrefetch } from './trade-prefetch.js';
@@ -257,6 +257,11 @@ Object.assign(window, {
   wheelGenerate,
   wheelSpin,
   jackpotSpin,
+  doubleOrNothing,
+  openSeedLookup,
+  applySeedLookup,
+  cancelSeedLookup,
+  exitSeedPreview,
   sortSpinLog,
   openPostModal,
   closePostModal,

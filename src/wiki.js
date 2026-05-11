@@ -1,16 +1,101 @@
 import { getGameData } from './game-data.js';
 import { t } from './i18n.js';
+import WB from '../shared/wheel-balance.js';
 
 export async function loadWiki() {
   const { items, buildings, recipes, quests } = await getGameData();
   const currencies = await fetch('/data/currencies.json').then(r => r.json()).then(d => d.currencies);
   const container = document.getElementById('wiki-container');
   container.innerHTML =
+    // renderWheel() +
     renderCurrencies(currencies) +
     renderItems(items) +
     renderBuildings(buildings) +
     renderRecipes(recipes, items, buildings) +
     renderQuests(quests, items);
+}
+
+// ── Wheel EV ──────────────────────────────────────
+function jackpotEV() {
+  const rounds = WB.jackpot.rounds;
+
+  // Last round repeats → fixed-point: V = p_end / (1 − Σ pᵢ·rᵢ)
+  const last = rounds[rounds.length - 1];
+  let pEnd = 0, sumPR = 0;
+  for (const f of last.fields) {
+    if (f.end) pEnd = f.prob;
+    else       sumPR += f.prob * f.reward;
+  }
+  let V = (1 - sumPR) > 0 ? pEnd / (1 - sumPR) : 0;
+
+  // Back-propagate through earlier rounds
+  for (let i = rounds.length - 2; i >= 0; i--) {
+    let Vn = 0;
+    for (const f of rounds[i].fields) Vn += f.end ? f.prob : f.prob * f.reward * V;
+    V = Vn;
+  }
+
+  return WB.spin_cost * V;
+}
+
+function wheelSpinEV() {
+  const catExp = WB.categories.reduce((s, c) => s + c.prob * ((c.min + c.max) / 2) * WB.spin_cost, 0);
+  return (1 - WB.jackpot.prob) * catExp + WB.jackpot.prob * jackpotEV() - WB.spin_cost;
+}
+
+function renderWheel() {
+  const jp    = WB.jackpot;
+  const jpEV  = jackpotEV();
+  const wEV   = wheelSpinEV();
+  const hedge = (-wEV / WB.spin_cost * 100).toFixed(1);
+  const colors = jp.field_colors;
+
+  const fieldHeaders = jp.rounds[0].fields.map((f, i) =>
+    `<th style="color:${colors[i]}">${f.end ? 'CASH OUT' : `Feld ${i + 1}`}</th>`
+  ).join('');
+
+  const roundRows = jp.rounds.map((round, idx) =>
+    `<tr><td class="col-num">${idx + 1}</td>${
+      round.fields.map((f, i) => {
+        const pct = (f.prob * 100).toFixed(1);
+        return `<td class="col-num" style="color:${colors[i]}">${
+          f.end ? `${pct}%` : `×${f.reward}<br><small style="opacity:.7">${pct}%</small>`
+        }</td>`;
+      }).join('')
+    }</tr>`
+  ).join('');
+
+  const catRows = WB.categories.map(c => {
+    const avg = (c.min + c.max) / 2 * WB.spin_cost;
+    return `<tr>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c.color};margin-right:5px"></span></td>
+      <td class="col-num">${(c.prob * 100).toFixed(0)}%</td>
+      <td class="col-num">${c.min === c.max ? `${c.min * WB.spin_cost}` : `${c.min * WB.spin_cost} – ${c.max * WB.spin_cost}`} 💰</td>
+      <td class="col-num">${avg.toFixed(2)} 💰</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="panel">
+    <div class="panel-header">WHEEL OF FORTUNE — EV</div>
+    <table class="trade-table" style="margin-bottom:.8rem">
+      <thead><tr><th>Kennzahl</th><th>Wert</th></tr></thead>
+      <tbody>
+        <tr><td>Einsatz pro Spin</td><td class="col-num">${WB.spin_cost} 💰</td></tr>
+        <tr><td>Jackpot-Chance</td><td class="col-num">${(jp.prob * 100).toFixed(0)} %</td></tr>
+        <tr><td>⌀ Jackpot-Auszahlung</td><td class="col-num">${jpEV.toFixed(2)} 💰</td></tr>
+        <tr><td>⌀ Return pro Spin</td><td class="col-num ${wEV < 0 ? 'log-zero' : ''}">${wEV >= 0 ? '+' : ''}${wEV.toFixed(2)} 💰</td></tr>
+        <tr><td>House Edge</td><td class="col-num">${hedge} %</td></tr>
+      </tbody>
+    </table>
+    <table class="trade-table" style="margin-bottom:.8rem">
+      <thead><tr><th>Kategorie</th><th>Chance</th><th>Reward</th><th>⌀ Reward</th></tr></thead>
+      <tbody>${catRows}</tbody>
+    </table>
+    <table class="trade-table">
+      <thead><tr><th>Runde</th>${fieldHeaders}</tr></thead>
+      <tbody>${roundRows}</tbody>
+    </table>
+  </div>`;
 }
 
 function renderCurrencies(currencies) {
