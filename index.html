@@ -74,6 +74,7 @@
           <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.5"
                  oninput="setVolume(this.value)" />
         </div>
+        <span class="nav-gold" id="nav-gold">– 💰</span>
         <a href="#profile" class="nav-link nav-user" id="nav-username" onclick="toggleUserMenu()">–</a>
       </div>
     </header>
@@ -239,10 +240,15 @@
       <!-- Wheel -->
       <div id="view-wheel" class="view hidden">
         <div class="panel wheel-panel">
-          <div class="panel-header" data-i18n="ui.wheel.header">WHEEL OF FORTUNE</div>
+          <div class="panel-header" id="wheel-panel-header">WHEEL OF FORTUNE</div>
+          <div id="jackpot-header" class="jackpot-header hidden">
+            <div class="jackpot-round-label" id="jackpot-round-label">RUNDE 1</div>
+            <div class="jackpot-formula" id="jackpot-formula"></div>
+          </div>
           <div class="wheel-body">
             <div class="wheel-stage">
               <canvas id="wheel-canvas" width="480" height="480"></canvas>
+              <canvas id="jackpot-canvas" width="480" height="480" class="hidden"></canvas>
             </div>
             <div class="wheel-controls">
               <div class="wheel-gold-row">

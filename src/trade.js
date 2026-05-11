@@ -4,6 +4,7 @@ import { calculateSellPrice, calculateBuyPrice } from '../shared/trade-pricing.j
 import { traderPrefetch } from './trade-prefetch.js';
 import { recordBurst, getFullSummary, resetSummary } from './trade-session-summary.js';
 import { updateSummaryPopup, clearAllSummaryPopups } from './trade-summary-popup.js';
+import { setGold, getGold } from './gold.js';
 
 // ── Session state ──────────────────────────────────
 let _session        = null;
@@ -11,7 +12,6 @@ let _stocks         = {};
 let _inventory      = {};
 let _avgBuyPrice    = {};
 let _paidQty        = {};
-let _gold           = 0;
 let _items          = [];   // session items (for prices table)
 let _allTradeItems  = [];   // all tradeable items (for inventory table, always loaded)
 let _config         = null;
@@ -44,6 +44,7 @@ async function loadInventoryData() {
     _avgBuyPrice[i.item_type] = i.avgBuyPrice;
     _paidQty[i.item_type]     = i.paidQuantity;
   });
+  setGold(data.gold ?? 0);
 }
 
 export async function loadTrade() {
@@ -55,7 +56,6 @@ export async function loadTrade() {
   if (data.error || !data.session_id) return;
   applySession(data);
   renderPricesTable();
-  updateGoldDisplays(_gold);
 }
 
 export async function tradeGenerateSession() {
@@ -77,7 +77,6 @@ export async function tradeGenerateSession() {
     _logSummary();
     applySession(data, false); // false: we activate synchronously below
     renderPricesTable();
-    updateGoldDisplays(_gold);
     _items.forEach(i => updateInventoryRow(i.item_type));
     // Activate before prime() so the prefetch DELETE doesn't kill this session
     // while it's still status='prefetched'. Session must be 'active' first.
@@ -94,7 +93,6 @@ export async function tradeGenerateSession() {
   _logSummary();
   applySession(data, false);
   renderPricesTable();
-  updateGoldDisplays(_gold);
   _items.forEach(i => updateInventoryRow(i.item_type));
   traderPrefetch.invalidate(); // clear any stale prefetch data
   traderPrefetch.prime();
@@ -114,7 +112,6 @@ function applySession(data, fromPrefetch = false) {
   _needsActivation = fromPrefetch;
   if (_syncDebounceTimer) { clearTimeout(_syncDebounceTimer); _syncDebounceTimer = null; }
   data.items.forEach(item => { _stocks[item.item_type] = item.current_stock; });
-  _gold = data.player_gold;
   startSyncTimer();
   startCountdown();
 }
@@ -143,24 +140,23 @@ function executeTrade(itemType, direction) {
   if (direction === 'buy'  && stock < 1)    { stopHold(); return; }
 
   const price = direction === 'sell' ? sellPx(item) : buyPx(item);
-  if (direction === 'buy' && _gold < price) { stopHold(); return; }
+  if (direction === 'buy' && getGold() < price) { stopHold(); return; }
 
   const stockBefore = stock;
   if (direction === 'sell') {
     _stocks[itemType]    = stock + 1;
     _inventory[itemType] = Math.max(0, owned - 1);
-    _gold += price;
+    setGold(getGold() + price);
   } else {
     _stocks[itemType]    = Math.max(0, stock - 1);
     _inventory[itemType] = owned + 1;
-    _gold -= price;
+    setGold(getGold() - price);
   }
 
   _pending.push({ item_type: itemType, direction, quantity: 1,
     client_price_per_unit: price, stock_before: stockBefore, stock_after: _stocks[itemType] });
 
   recordBurst(itemType, direction, 1, price);
-  updateGoldDisplays(_gold);
   updateRow(itemType);
   updateSummaryPopup(itemType, item.display_name);
 }
@@ -215,14 +211,13 @@ async function doSync() {
     // Only overwrite optimistic state when the player is not actively trading
     // and no new transactions have queued up while this request was in-flight.
     if (!_isTradingActive && _pending.length === 0) {
-      _gold = result.player_gold;
+      setGold(result.player_gold);
       (result.player_inventory || []).forEach(i => {
         _inventory[i.itemType]   = i.quantity;
         _avgBuyPrice[i.itemType] = i.avgBuyPrice  ?? 0;
         _paidQty[i.itemType]     = i.paidQuantity ?? 0;
       });
       Object.entries(result.session_stocks || {}).forEach(([k, v]) => { _stocks[k] = v; });
-      updateGoldDisplays(_gold);
       _items.forEach(item => updateRow(item.item_type));
     }
     if (_pending.length > 0) doSync();
@@ -338,7 +333,7 @@ function renderInventoryTable() {
         <tr class="trade-section-header">
           <th colspan="3"><div class="trade-section-header-inner">
             <span>${t('ui.trade.section.inventory')}</span>
-            <span class="wheel-gold-val" id="trade-gold">– 💰</span>
+            <span class="wheel-gold-val" id="trade-gold">${getGold()} 💰</span>
           </div></th>
         </tr>
         <tr><th></th><th>${t('ui.trade.col.item')}</th><th>${t('ui.trade.col.owned')}</th></tr>
@@ -392,7 +387,7 @@ function renderTradeRow(item) {
   const { pos, color } = _indicatorStyle(stock, item.base_quantity);
   return `<tr id="trade-row-${item.item_type}">
     <td><button class="trade-sell-btn" data-item="${item.item_type}" data-dir="sell"${owned < 1 ? ' disabled' : ''}>${sp} 💰</button></td>
-    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || _gold < bp ? ' disabled' : ''}>${bp} 💰</button></td>
+    <td><button class="trade-buy-btn"  data-item="${item.item_type}" data-dir="buy"${stock < 1 || getGold() < bp ? ' disabled' : ''}>${bp} 💰</button></td>
     <td class="stock-th trade-amount">
       <div id="trade-stock-${item.item_type}">${stock}</div>
       <div class="trade-indicator">
@@ -434,7 +429,7 @@ export function updateTradeRow(itemType) {
   const sellBtn = row.querySelector('[data-dir="sell"]');
   const buyBtn  = row.querySelector('[data-dir="buy"]');
   if (sellBtn) { sellBtn.textContent = `${sp} 💰`; sellBtn.disabled = owned < 1; }
-  if (buyBtn)  { buyBtn.textContent  = `${bp} 💰`; buyBtn.disabled  = stock < 1 || _gold < bp; }
+  if (buyBtn)  { buyBtn.textContent  = `${bp} 💰`; buyBtn.disabled  = stock < 1 || getGold() < bp; }
   updateIndicator(itemType, stock, item.base_quantity);
 }
 
@@ -469,14 +464,4 @@ function _logSummary() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: _session.session_id, summary }),
   }).catch(() => {});
-}
-
-// ── Gold displays (shared across tabs) ────────────
-export function updateGoldDisplays(gold) {
-  const wheelEl = document.getElementById('wheel-gold');
-  const statEl  = document.getElementById('stat-gold');
-  const tradeEl = document.getElementById('trade-gold');
-  if (wheelEl) wheelEl.textContent = `${gold} 💰`;
-  if (statEl)  statEl.textContent  = gold;
-  if (tradeEl) tradeEl.textContent = `${gold} 💰`;
 }

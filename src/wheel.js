@@ -1,6 +1,8 @@
 import { api, escapeHtml } from './api.js';
 import { updateCharCount } from './utils.js';
 import { slSort, slFilters, updateColClearBtns } from './table-filter.js';
+import { setGold } from './gold.js';
+import WB from '../shared/wheel-balance.js';
 
 // ── Audio ─────────────────────────────────────────
 let audioCtx   = null;
@@ -35,6 +37,16 @@ function _tone(freq, type, dur, vol) {
 function playClick() { _tone(880, 'square', 0.07, 0.3); }
 function playTick()  { _tone(1200, 'square', 0.025, 0.15); }
 
+function playJackpotChing(count) {
+  if (!audioCtx) return;
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      _tone(2400, 'sine', 0.4, 0.5);
+      _tone(1800, 'sine', 0.22, 0.35);
+    }, i * 340);
+  }
+}
+
 function playWinSound(reward) {
   if (!audioCtx) return;
   if (reward === 0) {
@@ -65,9 +77,14 @@ let postedSeeds   = new Set();
 let lastPostTime  = 0;
 let modalSeedData = null;
 
-// ── Wheel math ────────────────────────────────────
-const CAT_COLORS = ['#9e9e9e', '#64b5f6', '#9c27b0', '#ef5350', '#ffd700'];
+// ── Jackpot state ─────────────────────────────────
+let jpRound       = 0;
+let jpProduct     = 1;
+let jpMultipliers = [];
+let jpRaf         = null;
+let jpRot         = 0;
 
+// ── Wheel math ────────────────────────────────────
 function mulberry32(seed) {
   seed = seed >>> 0;
   return function() {
@@ -78,25 +95,32 @@ function mulberry32(seed) {
   };
 }
 
+// Cumulative category thresholds (computed once from balance config)
+const _cumCats = (() => {
+  let cum = 0;
+  return WB.categories.map(c => { cum += c.prob; return cum; });
+})();
+
 function buildWheelV1(seedStr) {
   const rng = mulberry32(parseInt(seedStr, 10));
-  const n   = Math.floor(rng() * 7) + 2;
-  const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
+
+  const n   = Math.floor(rng() * WB.segments.count_range) + WB.segments.count_min;
+  const w   = Array.from({length: n}, () => WB.segments.weight_min + rng() * WB.segments.weight_range);
   const tot = w.reduce((a, b) => a + b, 0);
-  const p   = w.map(x => x / tot);
-  const rawData = Array.from({length: n}, () => {
-    const r = rng();
-    if (r < 0.30) return { raw: 0,                  cat: 0 };
-    if (r < 0.62) return { raw: rng() * 90 + 5,     cat: 1 };
-    if (r < 0.84) return { raw: rng() * 280 + 60,   cat: 2 };
-    if (r < 0.95) return { raw: rng() * 450 + 220,  cat: 3 };
-    return               { raw: rng() * 2000 + 2000, cat: 4 };
+
+  const emptyColor = WB.categories[0].color;
+  const segs = w.map(wi => {
+    const prob   = wi / tot * (1 - WB.jackpot.prob);
+    const r      = rng();
+    const catIdx = _cumCats.findIndex(t => r < t);
+    const cat    = WB.categories[Math.max(0, catIdx)];
+    // When min === max, skip the second RNG call (preserves seed sequence)
+    const mult   = cat.min === cat.max ? cat.min : cat.min + rng() * (cat.max - cat.min);
+    const reward = Math.round(mult * WB.spin_cost);
+    return { prob, reward, color: reward === 0 ? emptyColor : cat.color };
   });
-  const raw   = rawData.map(d => d.raw);
-  const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 11 / ev : 1;
-  const rwd   = raw.map(r => Math.min(200, Math.max(0, Math.round(r * scale))));
-  return p.map((prob, i) => ({ prob, reward: rwd[i], color: CAT_COLORS[rawData[i].cat] }));
+  segs.push({ prob: WB.jackpot.prob, reward: 0, color: WB.jackpot.color, isJackpot: true });
+  return segs;
 }
 
 function wheelCurrentSeg(rot) {
@@ -152,7 +176,7 @@ function drawWheel() {
     ctx.shadowColor = 'rgba(0,0,0,.7)';
     ctx.shadowBlur  = 4;
     ctx.textAlign   = 'right';
-    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 10, (fs | 0) / 3);
+    ctx.fillText(seg.isJackpot ? '★JP' : seg.reward === 0 ? '0' : `${seg.reward}`, R - 10, (fs | 0) / 3);
     ctx.restore();
 
     a += arc;
@@ -218,7 +242,7 @@ function drawMiniWheel(canvas, segs, winIdx) {
     ctx.font = `bold ${fs | 0}px Segoe UI,sans-serif`;
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'right';
-    ctx.fillText(seg.reward === 0 ? '0' : `${seg.reward}`, R - 4, (fs | 0) / 3);
+    ctx.fillText(seg.isJackpot ? '★JP' : seg.reward === 0 ? '0' : `${seg.reward}`, R - 4, (fs | 0) / 3);
     ctx.restore();
 
     a += arc;
@@ -237,6 +261,201 @@ function drawMiniWheel(canvas, segs, winIdx) {
   ctx.closePath();
   ctx.fillStyle = '#e53935';
   ctx.fill();
+}
+
+// ── Jackpot Wheel ─────────────────────────────────
+function drawJackpotWheel() {
+  const canvas = document.getElementById('jackpot-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const S   = canvas.width;
+  const cx  = S / 2, cy = S / 2;
+  const R   = S / 2 - 26;
+  const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
+  const fields   = WB.jackpot.rounds[roundIdx].fields;
+  const n        = fields.length;
+  const arcSize  = Math.PI * 2 / n;
+
+  ctx.clearRect(0, 0, S, S);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 10, 0, Math.PI * 2);
+  ctx.fillStyle = '#162032';
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(jpRot);
+
+  let a = -Math.PI / 2;
+  fields.forEach(field => {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, a, a + arcSize);
+    ctx.closePath();
+    ctx.fillStyle = field.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(a + arcSize / 2);
+    const label = field.end ? 'ENDE' : `×${field.reward}`;
+    const fs    = field.end ? 18 : 26;
+    ctx.font = `bold ${fs}px Segoe UI,sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.7)';
+    ctx.shadowBlur  = 4;
+    ctx.textAlign   = 'right';
+    ctx.fillText(label, R - 10, fs / 3);
+    ctx.restore();
+    a += arcSize;
+  });
+
+  ctx.beginPath();
+  ctx.arc(0, 0, 20, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d1a28';
+  ctx.fill();
+  ctx.strokeStyle = '#c8d8e8';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.moveTo(cx - 15, cy - R - 4);
+  ctx.lineTo(cx + 15, cy - R - 4);
+  ctx.lineTo(cx, cy - R + 22);
+  ctx.closePath();
+  ctx.fillStyle = '#e53935';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function updateJackpotFormula() {
+  const el = document.getElementById('jackpot-formula');
+  if (!el) return;
+  if (jpMultipliers.length === 0 && jpProduct <= 1) {
+    el.textContent = `${WB.spin_cost} 💰`;
+    return;
+  }
+  const payout = Math.round(WB.spin_cost * jpProduct);
+  if (jpMultipliers.length > 0) {
+    el.innerHTML = `${[WB.spin_cost, ...jpMultipliers].join(' × ')} = <strong>${payout}</strong> 💰`;
+  } else {
+    el.innerHTML = `${WB.spin_cost} × … = <strong>${Math.round(WB.spin_cost * jpProduct)}</strong> 💰`;
+  }
+}
+
+function showJackpotPanel(round = 0, product = 1) {
+  jpRound       = round;
+  jpProduct     = product;
+  jpMultipliers = [];
+  jpRot         = 0;
+
+  document.getElementById('wheel-canvas').classList.add('hidden');
+  document.getElementById('jackpot-canvas').classList.remove('hidden');
+  document.getElementById('jackpot-header').classList.remove('hidden');
+  document.getElementById('wheel-panel-header').textContent = '★ JACKPOT WHEEL ★';
+  document.getElementById('jackpot-round-label').textContent = `RUNDE ${round + 1}`;
+  updateJackpotFormula();
+
+  document.getElementById('wheel-btn-row').innerHTML =
+    `<button id="jackpot-spin-btn" onclick="jackpotSpin()">&#9654; DREHEN</button>`;
+  document.getElementById('wheel-result').classList.add('hidden');
+  document.getElementById('wheel-error').textContent = '';
+  document.getElementById('wheel-seed-row').textContent = '';
+
+  drawJackpotWheel();
+}
+
+function hideJackpotPanel() {
+  document.getElementById('jackpot-canvas').classList.add('hidden');
+  document.getElementById('wheel-canvas').classList.remove('hidden');
+  document.getElementById('jackpot-header').classList.add('hidden');
+  document.getElementById('wheel-panel-header').textContent = 'WHEEL OF FORTUNE';
+}
+
+function jpTargetRot(fieldIdx) {
+  const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
+  const n        = WB.jackpot.rounds[roundIdx].fields.length;
+  const arcSize  = Math.PI * 2 / n;
+  const land     = fieldIdx * arcSize + arcSize * 0.15 + Math.random() * arcSize * 0.70;
+  const base     = -land;
+  const extra    = Math.ceil((jpRot + Math.PI * 2 * 6 - base) / (Math.PI * 2));
+  return base + extra * Math.PI * 2;
+}
+
+function jpCurrentField(rot) {
+  const roundIdx = Math.min(jpRound, WB.jackpot.rounds.length - 1);
+  const n        = WB.jackpot.rounds[roundIdx].fields.length;
+  const arcSize  = Math.PI * 2 / n;
+  const angle    = ((-rot) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  return Math.floor(angle / arcSize) % n;
+}
+
+function animateJackpotSpin(fieldIdx, onDone) {
+  if (jpRaf) cancelAnimationFrame(jpRaf);
+  const target   = jpTargetRot(fieldIdx);
+  const start    = jpRot;
+  const t0       = performance.now();
+  const dur      = 1800 + Math.random() * 800;
+  function ease(p) { return 1 - Math.pow(1 - p, 5); }
+  let lastField  = jpCurrentField(jpRot);
+  function frame(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    jpRot = start + (target - start) * ease(t);
+    const curField = jpCurrentField(jpRot);
+    if (curField !== lastField) { lastField = curField; playTick(); }
+    drawJackpotWheel();
+    if (t >= 1 || t > 0.78) { jpRot = target; drawJackpotWheel(); jpRaf = null; onDone(); }
+    else                     { jpRaf = requestAnimationFrame(frame); }
+  }
+  jpRaf = requestAnimationFrame(frame);
+}
+
+export async function jackpotSpin() {
+  document.getElementById('jackpot-spin-btn').disabled = true;
+  document.getElementById('wheel-result').classList.add('hidden');
+
+  const data = await api('POST', '/api/jackpot/spin');
+  if (data.error) {
+    const el = document.getElementById('wheel-result');
+    el.textContent = data.error;
+    el.classList.remove('hidden');
+    document.getElementById('jackpot-spin-btn').disabled = false;
+    return;
+  }
+
+  animateJackpotSpin(data.fieldIndex, () => {
+    const el = document.getElementById('wheel-result');
+    el.classList.remove('hidden', 'zero', 'jackpot-hit');
+    if (data.end) {
+      playWinSound(data.total);
+      el.textContent = `★ JACKPOT +${data.total} GOLD ★`;
+      el.classList.add('jackpot-hit');
+      setGold(data.gold);
+      setTimeout(() => {
+        hideJackpotPanel();
+        renderWheelButtons(false);
+      }, 3500);
+    } else {
+      jpRound    = data.round;
+      jpProduct  = data.accumulated;
+      jpMultipliers.push(data.multiplier);
+      updateJackpotFormula();
+      const labelEl = document.getElementById('jackpot-round-label');
+      labelEl.textContent = `RUNDE ${data.round + 1}`;
+      labelEl.classList.remove('jp-round-pulse');
+      void labelEl.offsetWidth;
+      labelEl.classList.add('jp-round-pulse');
+      playJackpotChing(data.round + 1);
+      el.textContent = `× ${data.multiplier}`;
+      drawJackpotWheel();
+      document.getElementById('jackpot-spin-btn').disabled = false;
+    }
+  });
 }
 
 // ── Animation ─────────────────────────────────────
@@ -261,7 +480,7 @@ function animateSpin(segIdx, onDone) {
   const target = wheelTargetRot(segIdx);
   const start  = wheelRot;
   const t0     = performance.now();
-  const dur    = 4500 + Math.random() * 2500;
+  const dur    = 2500 + Math.random() * 1500;
   function ease(p) { return 1 - Math.pow(1 - p, 6); }
   let lastSeg = wheelCurrentSeg(wheelRot);
   function frame(now) {
@@ -272,7 +491,7 @@ function animateSpin(segIdx, onDone) {
     const curSeg = wheelCurrentSeg(wheelRot);
     if (curSeg !== lastSeg) { lastSeg = curSeg; playTick(); }
     drawWheel();
-    if (t >= 1 || t > 0.82) { wheelRot = target; drawWheel(); wheelRaf = null; onDone(); }
+    if (t >= 1 || t > 0.75) { wheelRot = target; drawWheel(); wheelRaf = null; onDone(); }
     else                     { wheelRaf = requestAnimationFrame(frame); }
   }
   wheelRaf = requestAnimationFrame(frame);
@@ -283,13 +502,13 @@ function renderWheelButtons(hasSeed) {
   const row = document.getElementById('wheel-btn-row');
   if (hasSeed) {
     row.innerHTML = `
-      <button id="wbtn-spin" onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">5 &#128176;</span></button>
+      <button id="wbtn-spin" onclick="wheelSpin()">&#9654; SPIN <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>
       <span class="wheel-or">OR</span>
-      <button id="wbtn-regen" class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+      <button id="wbtn-regen" class="btn-secondary" onclick="wheelGenerate()">&#8635; REGENERATE <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>`;
     setTimeout(() => document.getElementById('wbtn-spin')?.focus(), 50);
   } else {
     row.innerHTML = `
-      <button id="wbtn-gen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">5 &#128176;</span></button>`;
+      <button id="wbtn-gen" onclick="wheelGenerate()">&#9889; GENERATE <span class="wheel-cost">${WB.spin_cost} &#128176;</span></button>`;
     setTimeout(() => document.getElementById('wbtn-gen')?.focus(), 50);
   }
 }
@@ -300,8 +519,11 @@ function setWheelBtnsDisabled(on) {
 
 // ── Public API ────────────────────────────────────
 export async function loadWheel() {
-  const data = await api('GET', '/api/wheel');
-  document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
+  const [data, jpData] = await Promise.all([
+    api('GET', '/api/wheel'),
+    api('GET', '/api/jackpot'),
+  ]);
+  setGold(data.gold);
   if (data.seed) {
     wheelSegs = buildWheelV1(data.seed);
     drawWheel();
@@ -315,6 +537,7 @@ export async function loadWheel() {
   }
   document.getElementById('wheel-result').classList.add('hidden');
   document.getElementById('wheel-error').textContent = '';
+  if (jpData.active) showJackpotPanel(jpData.round, parseFloat(jpData.accumulated));
   loadWheelLog();
 }
 
@@ -357,17 +580,24 @@ export async function wheelSpin() {
     playWinSound(data.reward);
     const el = document.getElementById('wheel-result');
     el.classList.remove('hidden', 'zero');
-    if (data.reward === 0) {
+    if (data.jackpot) {
+      el.textContent = '★ JACKPOT ★';
+      el.classList.add('jackpot-hit');
+    } else if (data.reward === 0) {
       el.textContent = '— 0 GOLD —';
       el.classList.add('zero');
     } else {
       el.textContent = `+ ${data.reward} GOLD`;
     }
-    document.getElementById('wheel-gold').textContent = `${data.gold} 💰`;
+    setGold(data.gold);
     wheelSegs = null;
     document.getElementById('wheel-seed-row').textContent = '';
     renderWheelButtons(false);
-    setWheelBtnsDisabled(false);
+    if (data.jackpot) {
+      setTimeout(() => showJackpotPanel(0, 1), 800);
+    } else {
+      setWheelBtnsDisabled(false);
+    }
     loadWheelLog();
   });
 }

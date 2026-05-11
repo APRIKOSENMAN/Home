@@ -1,20 +1,31 @@
-require('dotenv').config(); // loads .env locally; no-op in production if file missing
-require('dns').setDefaultResultOrder('ipv4first');
-const express        = require('express');
-const session        = require('express-session');
-const bcrypt         = require('bcryptjs');
-const { Pool }       = require('pg');
-const { randomUUID } = require('crypto');
-const { execSync }   = require('child_process');
-const path           = require('path');
+import 'dotenv/config';
+import dns            from 'dns';
+import express        from 'express';
+import session        from 'express-session';
+import bcrypt         from 'bcryptjs';
+import { Pool }       from 'pg';
+import { randomUUID } from 'crypto';
+import { execSync }   from 'child_process';
+import path           from 'path';
+import fs             from 'fs';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+import WB from './shared/wheel-balance.js';
+import { calculateSellPrice, calculateBuyPrice, calculateSessionPrices, updateAvgBuyPrice } from './shared/trade-pricing.js';
+import { executeTransaction, getUserState } from './currency-manager.js';
 
-const BUILDINGS      = require('./data/buildings.json');
-const RECIPES        = require('./data/recipes.json');
-const ITEMS          = require('./data/items.json');
-const TRADE_BALANCE  = require('./trade-balance-public.json');
-const { calculateSellPrice, calculateBuyPrice, calculateSessionPrices, updateAvgBuyPrice } = require('./shared/trade-pricing.cjs');
-const PKG_VERSION = require('./package.json').version;
-const { executeTransaction, getUserState } = require('./currency-manager');
+dns.setDefaultResultOrder('ipv4first');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+const _require   = createRequire(import.meta.url);
+
+const BUILDINGS     = _require('./data/buildings.json');
+const RECIPES       = _require('./data/recipes.json');
+const ITEMS         = _require('./data/items.json');
+const TRADE_BALANCE = _require('./trade-balance-public.json');
+const LOCALES       = _require('./data/locales/en.json');
+const PKG_VERSION   = _require('./package.json').version;
 
 function parseDuration(str) {
   if (typeof str === 'number') return str;
@@ -46,22 +57,26 @@ function mulberry32(seed) {
 // Must stay in sync with client buildWheelV1
 function wheelSegments(seedStr) {
   const rng = mulberry32(parseInt(seedStr, 10));
-  const n   = Math.floor(rng() * 7) + 2;
-  const w   = Array.from({length: n}, () => 0.15 + rng() * 0.85);
+
+  const n   = Math.floor(rng() * WB.segments.count_range) + WB.segments.count_min;
+  const w   = Array.from({length: n}, () => WB.segments.weight_min + rng() * WB.segments.weight_range);
   const tot = w.reduce((a, b) => a + b, 0);
-  const p   = w.map(x => x / tot);
-  const raw = Array.from({length: n}, () => {
-    const r = rng();
-    if (r < 0.30) return 0;
-    if (r < 0.62) return rng() * 90 + 5;
-    if (r < 0.84) return rng() * 280 + 60;
-    if (r < 0.95) return rng() * 450 + 220;
-    return rng() * 2000 + 2000;
+
+  let cum = 0;
+  const cumCats = WB.categories.map(c => { cum += c.prob; return cum; });
+
+  const segs = w.map(wi => {
+    const prob   = wi / tot * (1 - WB.jackpot.prob);
+    const r      = rng();
+    const catIdx = cumCats.findIndex(t => r < t);
+    const cat    = WB.categories[Math.max(0, catIdx)];
+    // When min === max, skip the second RNG call (preserves seed sequence)
+    const mult   = cat.min === cat.max ? cat.min : cat.min + rng() * (cat.max - cat.min);
+    const reward = Math.round(mult * WB.spin_cost);
+    return { prob, reward };
   });
-  const ev    = p.reduce((s, pi, i) => s + pi * raw[i], 0);
-  const scale = ev > 0 ? 11 / ev : 1;
-  const rwd   = raw.map(r => Math.min(200, Math.max(0, Math.round(r * scale))));
-  return p.map((prob, i) => ({ prob, reward: rwd[i] }));
+  segs.push({ prob: WB.jackpot.prob, reward: 0 }); // jackpot (reserved, does nothing yet)
+  return segs;
 }
 
 const app  = express();
@@ -107,6 +122,16 @@ async function initDb() {
     );
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_last_claimed TIMESTAMPTZ DEFAULT NULL;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS jackpot_sessions (
+      username    TEXT PRIMARY KEY,
+      round       INTEGER      NOT NULL DEFAULT 0,
+      accumulated DECIMAL(12,4) NOT NULL DEFAULT 1,
+      started_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`ALTER TABLE jackpot_sessions ALTER COLUMN accumulated TYPE DECIMAL(12,4) USING accumulated::DECIMAL(12,4)`);
+  await pool.query(`ALTER TABLE jackpot_sessions ALTER COLUMN accumulated SET DEFAULT 1`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_currency INTEGER DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`);
@@ -589,13 +614,13 @@ app.get('/api/wheel', requireAuth, async (req, res) => {
 app.post('/api/wheel/generate', requireAuth, async (req, res) => {
   const username = req.session.username;
   const { rows } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
-  if (rows[0].gold < 5) return res.status(400).json({ error: 'Nicht genug Gold (5 benötigt)' });
+  if (rows[0].gold < WB.spin_cost) return res.status(400).json({ error: `Nicht genug Gold (${WB.spin_cost} benötigt)` });
 
   const seed    = String(Math.floor(Math.random() * 4294967296));
   const version = 1;
   await pool.query(
-    'UPDATE users SET gold = gold - 5, wheel_seed = $1, wheel_version = $2 WHERE username = $3',
-    [seed, version, username]
+    'UPDATE users SET gold = gold - $1, wheel_seed = $2, wheel_version = $3 WHERE username = $4',
+    [WB.spin_cost, seed, version, username]
   );
   const { rows: u } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
   res.json({ seed, version, gold: u[0].gold });
@@ -608,7 +633,7 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
   );
   const u = rows[0];
   if (!u.wheel_seed) return res.status(400).json({ error: 'Kein Wheel generiert' });
-  if (u.gold < 5)    return res.status(400).json({ error: 'Nicht genug Gold (5 benötigt)' });
+  if (u.gold < WB.spin_cost) return res.status(400).json({ error: `Nicht genug Gold (${WB.spin_cost} benötigt)` });
 
   const segs = wheelSegments(u.wheel_seed);
 
@@ -620,17 +645,67 @@ app.post('/api/wheel/spin', requireAuth, async (req, res) => {
     if (rand < cum) { idx = i; break; }
   }
   const reward = segs[idx].reward;
+  const isJackpot = idx === segs.length - 1; // jackpot is always the last segment
 
   await pool.query(
     'INSERT INTO spin_log (username, seed, version, segment_idx, reward) VALUES ($1, $2, $3, $4, $5)',
     [username, u.wheel_seed, u.wheel_version, idx, reward]
   );
   await pool.query(
-    'UPDATE users SET gold = GREATEST(0, gold - 5 + $1), wheel_seed = NULL WHERE username = $2',
-    [reward, username]
+    'UPDATE users SET gold = GREATEST(0, gold - $1 + $2), wheel_seed = NULL WHERE username = $3',
+    [WB.spin_cost, reward, username]
   );
+  if (isJackpot) {
+    await pool.query(`
+      INSERT INTO jackpot_sessions (username, round, accumulated)
+      VALUES ($1, 0, 1)
+      ON CONFLICT (username) DO UPDATE SET round = 0, accumulated = 1, started_at = NOW()
+    `, [username]);
+  }
   const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
-  res.json({ segmentIndex: idx, reward, gold: after[0].gold });
+  res.json({ segmentIndex: idx, reward, gold: after[0].gold, jackpot: isJackpot });
+});
+
+// ── Jackpot ───────────────────────────────────────
+
+app.get('/api/jackpot', requireAuth, async (req, res) => {
+  const { rows } = await pool.query('SELECT round, accumulated FROM jackpot_sessions WHERE username = $1', [req.session.username]);
+  if (!rows[0]) return res.json({ active: false });
+  res.json({ active: true, round: rows[0].round, accumulated: rows[0].accumulated });
+});
+
+app.post('/api/jackpot/spin', requireAuth, async (req, res) => {
+  const username = req.session.username;
+  const { rows } = await pool.query('SELECT round, accumulated FROM jackpot_sessions WHERE username = $1', [username]);
+  if (!rows[0]) return res.status(400).json({ error: 'Kein aktives Jackpot-Spiel' });
+
+  const session  = rows[0];
+  const roundIdx = Math.min(session.round, WB.jackpot.rounds.length - 1);
+  const round    = WB.jackpot.rounds[roundIdx];
+
+  const rand = Math.random();
+  let cum = 0, fieldIdx = round.fields.length - 1;
+  for (let i = 0; i < round.fields.length; i++) {
+    cum += round.fields[i].prob;
+    if (rand < cum) { fieldIdx = i; break; }
+  }
+  const field = round.fields[fieldIdx];
+
+  if (field.end) {
+    const total = Math.round(WB.spin_cost * parseFloat(session.accumulated));
+    await pool.query('UPDATE users SET gold = gold + $1 WHERE username = $2', [total, username]);
+    await pool.query('DELETE FROM jackpot_sessions WHERE username = $1', [username]);
+    const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
+    res.json({ end: true, fieldIndex: fieldIdx, total, gold: after[0].gold });
+  } else {
+    const newAccumulated = parseFloat(session.accumulated) * field.reward;
+    const newRound       = session.round + 1;
+    await pool.query(
+      'UPDATE jackpot_sessions SET accumulated = $1, round = $2 WHERE username = $3',
+      [newAccumulated, newRound, username]
+    );
+    res.json({ end: false, fieldIndex: fieldIdx, multiplier: field.reward, accumulated: newAccumulated, round: newRound });
+  }
 });
 
 // ── Daily ─────────────────────────────────────────
@@ -790,14 +865,21 @@ app.get('/api/wheel/log', requireAuth, async (req, res) => {
   res.json(rows);
 });
 
-const LOCALES = require('./data/locales/en.json');
+// GET /api/gold — current player gold balance
+app.get('/api/gold', requireAuth, async (req, res) => {
+  const { rows: [row] } = await pool.query('SELECT gold FROM users WHERE username=$1', [req.session.username]);
+  res.json({ gold: row?.gold ?? 0 });
+});
 
 // GET /api/trade/inventory — player's tradeable items with icons, names, quantities
 app.get('/api/trade/inventory', requireAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity"
-       FROM storage_items WHERE username=$1`, [req.session.username]);
+    const [{ rows }, { rows: [userRow] }] = await Promise.all([
+      pool.query(
+        `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity"
+         FROM storage_items WHERE username=$1`, [req.session.username]),
+      pool.query('SELECT gold FROM users WHERE username=$1', [req.session.username]),
+    ]);
     const invMap = Object.fromEntries(rows.map(r => [r.itemType, r]));
     const items = Object.entries(ITEMS)
       .filter(([, def]) => def.tradable)
@@ -809,7 +891,7 @@ app.get('/api/trade/inventory', requireAuth, async (req, res) => {
         avgBuyPrice:  invMap[id]?.avgBuyPrice  ?? 0,
         paidQuantity: invMap[id]?.paidQuantity ?? 0,
       }));
-    res.json({ items });
+    res.json({ items, gold: userRow?.gold ?? 0 });
   } catch (e) {
     console.error('GET /api/trade/inventory error:', e);
     res.status(500).json({ error: 'internal' });
@@ -891,17 +973,11 @@ async function buildSessionResponse(sessionRow, username) {
     };
   });
 
-  const { rows: [userRow] } = await pool.query('SELECT gold FROM users WHERE username=$1', [username]);
-  const { rows: invRows }   = await pool.query(
-    `SELECT item_type AS "itemType", quantity, avg_buy_price AS "avgBuyPrice", paid_quantity AS "paidQuantity" FROM storage_items WHERE username=$1`, [username]
-  );
   return {
-    session_id:       sessionRow.session_id,
-    expires_at:       sessionRow.expires_at,
+    session_id: sessionRow.session_id,
+    expires_at: sessionRow.expires_at,
     items,
-    config:           TRADE_BALANCE.pricing,
-    player_gold:      userRow?.gold ?? 0,
-    player_inventory: invRows,
+    config:     TRADE_BALANCE.pricing,
   };
 }
 
@@ -1218,7 +1294,6 @@ async function expireOldSessions() {
 
 // ── Dev hot-reload for data files ─────────────────
 if (!process.env.RAILWAY_ENVIRONMENT) {
-  const fs = require('fs');
   const hotReload = (file, target) => {
     fs.watchFile(path.join(__dirname, file), { interval: 300 }, () => {
       try {

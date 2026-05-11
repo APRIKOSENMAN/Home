@@ -4,7 +4,9 @@
  * Ensures atomicity, consistency, and auditability
  */
 
-const CURRENCIES = require('./data/currencies.json').currencies;
+import { createRequire } from 'module';
+const _require   = createRequire(import.meta.url);
+const CURRENCIES = _require('./data/currencies.json').currencies;
 const CURRENCY_MAP = Object.fromEntries(CURRENCIES.map(c => [c.id, c]));
 
 /**
@@ -194,8 +196,4 @@ async function getUserState(pool, username) {
   };
 }
 
-module.exports = {
-  executeTransaction,
-  getUserState,
-  CURRENCY_MAP
-};
+export { executeTransaction, getUserState, CURRENCY_MAP };

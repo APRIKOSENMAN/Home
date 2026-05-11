@@ -8,8 +8,9 @@ import { loadQuests } from './quests.js';
 import { loadProfile, deletePost, updateProfileStats, handleSearch } from './profile.js';
 import { submitPost, loadBoardPosts, startBoardRefresh, stopBoardRefresh, setBoardView, sortPostsTable, renderPostsTable, renderPosts, vote } from './board.js';
 import { loadFactory, renderFactory, renderStoragePanel, renderCityGrid, startBuildingDrag, dropBuilding, openBuildingPanel, closeBuildingPanel, startRecipe, collectOutput, removeBuilding } from './factory.js';
-import { loadWheel, wheelGenerate, wheelSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
-import { loadTrade, tradeGenerateSession, leaveTrade, stopSyncTimer, updateGoldDisplays } from './trade.js';
+import { loadWheel, wheelGenerate, wheelSpin, jackpotSpin, setVolume, sortSpinLog, openPostModal, closePostModal, submitPostModal, showWheelPreview, hideWheelPreview, speedUpSpin, wheelRaf, renderWheelLog } from './wheel.js';
+import { loadTrade, tradeGenerateSession, leaveTrade, stopSyncTimer } from './trade.js';
+import { startGoldPolling, stopGoldPolling } from './gold.js';
 import { traderPrefetch } from './trade-prefetch.js';
 import { loadWiki } from './wiki.js';
 import { loadFinance, sortTransactionLog, renderTransactionLog } from './finance.js';
@@ -96,6 +97,7 @@ async function login() {
 async function logout() {
   await api('POST', '/api/logout');
   setCurrentUser(null);
+  stopGoldPolling();
   stopBoardRefresh();
   document.getElementById('app-section').classList.add('hidden');
   document.getElementById('auth-section').classList.remove('hidden');
@@ -111,6 +113,7 @@ function showApp(username) {
   if (el) el.textContent = username.toUpperCase();
   document.getElementById('auth-section').classList.add('hidden');
   document.getElementById('app-section').classList.remove('hidden');
+  startGoldPolling();
   loadVersions();
   if (!window.location.hash || window.location.hash === '#') {
     window.location.hash = '#board';
@@ -253,6 +256,7 @@ Object.assign(window, {
   setVolume,
   wheelGenerate,
   wheelSpin,
+  jackpotSpin,
   sortSpinLog,
   openPostModal,
   closePostModal,
@@ -268,7 +272,6 @@ Object.assign(window, {
   closeBuildingPanel,
   // trade
   tradeGenerateSession,
-  updateGoldDisplays,
   // finance
   sortTransactionLog,
 });

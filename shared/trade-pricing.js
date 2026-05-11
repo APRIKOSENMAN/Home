@@ -1,4 +1,4 @@
-// Client-side (ES Module). Mirror of shared/trade-pricing.cjs — keep in sync.
+// Shared trade pricing logic (ES Module) — used by server and client.
 
 export function calculateSellPrice(basePrice, baseQuantity, currentStock, config) {
   const k = baseQuantity * config.k_factor;
