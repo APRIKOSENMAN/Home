@@ -132,6 +132,7 @@ async function initDb() {
   `);
   await pool.query(`ALTER TABLE jackpot_sessions ALTER COLUMN accumulated TYPE DECIMAL(12,4) USING accumulated::DECIMAL(12,4)`);
   await pool.query(`ALTER TABLE jackpot_sessions ALTER COLUMN accumulated SET DEFAULT 1`);
+  await pool.query(`ALTER TABLE spin_log ALTER COLUMN segment_idx DROP NOT NULL`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_currency INTEGER DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`);
@@ -692,9 +693,16 @@ app.post('/api/jackpot/spin', requireAuth, async (req, res) => {
   const field = round.fields[fieldIdx];
 
   if (field.end) {
-    const total = Math.round(WB.spin_cost * parseFloat(session.accumulated));
+    const m        = Number(req.body?.donMultiplier ?? 1);
+    const safeMult = (Number.isFinite(m) && m >= 0 && m <= 1024) ? m : 1;
+    const base     = Math.round(WB.spin_cost * parseFloat(session.accumulated));
+    const total    = Math.round(base * safeMult);
     await pool.query('UPDATE users SET gold = gold + $1 WHERE username = $2', [total, username]);
     await pool.query('DELETE FROM jackpot_sessions WHERE username = $1', [username]);
+    await pool.query(
+      'INSERT INTO spin_log (username, seed, version, segment_idx, reward) VALUES ($1, $2, $3, $4, $5)',
+      [username, 'JACKPOT', 0, null, total]
+    );
     const { rows: after } = await pool.query('SELECT gold FROM users WHERE username = $1', [username]);
     res.json({ end: true, fieldIndex: fieldIdx, total, gold: after[0].gold });
   } else {

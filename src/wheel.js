@@ -99,7 +99,7 @@ let jpDonRot     = 0;
 
 const DON_SEGS = [
   { prob: 0.51, label: '2×', color: '#43a047' },
-  { prob: 0.49, label: '0×', color: '#e53935' },
+  { prob: 0.49, label: '0×', color: '#111111' },
 ];
 
 // ── Wheel math ────────────────────────────────────
@@ -467,20 +467,52 @@ function jpRevealAnimation(onDone) {
   }, 300);
 }
 
+function jpBadge(text, color) {
+  return `<span class="jp-badge" style="background:${color}">${text}</span>`;
+}
+
 function updateJackpotFormula() {
   const el = document.getElementById('jackpot-formula');
   if (!el) return;
+
+  const doubles     = jpDonFactors.filter(f => f === 2);
+  const nothings    = jpDonFactors.filter(f => f === 0);
+  const hasDon      = jpDonFactors.length > 0;
   const donProduct  = jpDonFactors.reduce((a, b) => a * b, 1);
   const basePayout  = Math.round(WB.spin_cost * jpProduct);
   const finalPayout = Math.round(basePayout * donProduct);
 
-  if (jpMultipliers.length === 0 && jpDonFactors.length === 0) {
-    el.textContent = `${WB.spin_cost} 💰`;
+  const h = [];
+
+  // Einsatz
+  h.push(jpBadge(WB.spin_cost, '#1e2e42'));
+
+  // Runden
+  jpMultipliers.forEach(m => {
+    h.push('×');
+    h.push(jpBadge(`${m.value}×`, WB.jackpot.field_colors[m.fieldIdx]));
+  });
+
+  if (jpMultipliers.length === 0 && !hasDon) {
+    h.push('💰');
+    el.innerHTML = h.join(' ');
     return;
   }
 
-  const donPrefix = jpDonFactors.length > 0 ? jpDonFactors.map(f => `${f}×`).join(' × ') + ' × ' : '';
-  el.innerHTML = `${donPrefix}${[WB.spin_cost, ...jpMultipliers].join(' × ')} = <strong>${finalPayout}</strong> 💰`;
+  if (hasDon) {
+    // Zwischensumme
+    h.push(`= <strong>${basePayout}</strong>`);
+    // Double
+    doubles.forEach(() => { h.push('×'); h.push(jpBadge('2×', '#43a047')); });
+    // Nothing
+    nothings.forEach(() => { h.push('×'); h.push(jpBadge('0×', '#111111')); });
+    // Endsumme
+    h.push(`= <strong>${finalPayout}</strong> 💰`);
+  } else {
+    h.push(`= <strong>${basePayout}</strong> 💰`);
+  }
+
+  el.innerHTML = h.join(' ');
 }
 
 function showJackpotPanel(round = 0, product = 1) {
@@ -569,7 +601,8 @@ export async function jackpotSpin() {
   document.getElementById('jackpot-spin-btn').disabled = true;
   document.getElementById('wheel-error').textContent = '';
 
-  const data = await api('POST', '/api/jackpot/spin');
+  const donProduct = jpDonFactors.reduce((a, b) => a * b, 1);
+  const data = await api('POST', '/api/jackpot/spin', { donMultiplier: donProduct });
   if (data.error) {
     document.getElementById('wheel-error').textContent = data.error;
     document.getElementById('jackpot-spin-btn').disabled = false;
@@ -577,6 +610,17 @@ export async function jackpotSpin() {
   }
 
   animateJackpotSpin(data.fieldIndex, () => {
+    if (!data.end) {
+      jpDonUsed = false;
+      if (document.getElementById('don-aktivier')?.classList.contains('is-on')) {
+        const donBtn = document.getElementById('don-btn');
+        donBtn.disabled = false;
+        donBtn.classList.remove('don-btn-ready');
+        void donBtn.offsetWidth;
+        donBtn.classList.add('don-btn-ready');
+      }
+    }
+
     if (data.end) {
       for (let i = 0; i < 3; i++) setTimeout(() => playWinSound(0), i * 500);
     } else {
@@ -595,15 +639,11 @@ export async function jackpotSpin() {
       label,
       onDone: () => {
         if (data.end) {
-          const donProduct   = jpDonFactors.reduce((a, b) => a * b, 1);
-          const finalPayout  = Math.round(data.total * donProduct);
-          const adjustedGold = data.gold + Math.round(data.total * (donProduct - 1));
           const winEl = document.getElementById('jackpot-win');
-          winEl.textContent = `★ +${finalPayout} GOLD ★`;
+          winEl.textContent = `★ +${data.total} GOLD ★`;
           winEl.classList.remove('hidden');
-          slData.unshift({ spunAt: new Date().toISOString(), seed: 'JACKPOT', reward: finalPayout, segmentIdx: null, isJackpotEntry: true });
-          renderWheelLog();
-          setGold(adjustedGold);
+          setGold(data.gold);
+          loadWheelLog();
           setTimeout(() => {
             hideJackpotPanel();
             wheelGenerate();
@@ -611,8 +651,7 @@ export async function jackpotSpin() {
         } else {
           jpRound    = data.round;
           jpProduct  = data.accumulated;
-          jpMultipliers.push(data.multiplier);
-          jpDonUsed = false;
+          jpMultipliers.push({ value: data.multiplier, fieldIdx: data.fieldIndex });
           updateJackpotFormula();
           const labelEl = document.getElementById('jackpot-round-label');
           labelEl.textContent = `RUNDE ${data.round + 1}`;
@@ -621,9 +660,6 @@ export async function jackpotSpin() {
           labelEl.classList.add('jp-round-pulse');
           jpRevealAnimation(() => {
             document.getElementById('jackpot-spin-btn').disabled = false;
-            if (document.getElementById('don-aktivier')?.classList.contains('is-on')) {
-              document.getElementById('don-btn').disabled = false;
-            }
           });
         }
       },
@@ -1002,7 +1038,7 @@ export function renderWheelLog(entries) {
         </tr></thead>
         <tbody>${data.map(e => {
           const date = new Date(e.spunAt).toLocaleString('de-DE');
-          if (e.isJackpotEntry) {
+          if (e.seed === 'JACKPOT') {
             return `<tr>
               <td class="col-num">${date}</td>
               <td class="log-seed" style="color:#e8c84a;font-weight:700">★ JACKPOT</td>
